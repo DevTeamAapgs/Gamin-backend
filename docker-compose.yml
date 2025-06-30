@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Gaming Platform Backend
+  gaming-platform:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URL=mongodb://mongo:27017/gaming_platform
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=your-super-secret-key-change-in-production
+      - AES_KEY=your-32-byte-aes-key-for-encryption
+      - DEBUG=False
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - gaming-network
+
+  # MongoDB Database
+  mongo:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    restart: unless-stopped
+    networks:
+      - gaming-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - gaming-network
+
+  # Celery Worker (for background tasks)
+  celery-worker:
+    build: .
+    command: celery -A app.celery_app worker --loglevel=info
+    environment:
+      - MONGODB_URL=mongodb://mongo:27017/gaming_platform
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - gaming-network
+
+  # Celery Beat (for scheduled tasks)
+  celery-beat:
+    build: .
+    command: celery -A app.celery_app beat --loglevel=info
+    environment:
+      - MONGODB_URL=mongodb://mongo:27017/gaming_platform
+      - REDIS_URL=redis://redis:6379
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - gaming-network
+
+  # Nginx Reverse Proxy (optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - gaming-platform
+    restart: unless-stopped
+    networks:
+      - gaming-network
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  gaming-network:
+    driver: bridge 
