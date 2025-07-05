@@ -13,7 +13,7 @@ from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
 
 # Import routes
-from app.routes import auth, player, game, admin, socket
+from app.routes import auth, player, game, admin, socket, menu
 
 # Configure logging
 logging.basicConfig(
@@ -177,6 +177,7 @@ app.include_router(player.router, prefix="/api/v1/player", tags=["Player"])
 app.include_router(game.router, prefix="/api/v1/game", tags=["Game"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])
+app.include_router(menu.router, prefix="/api/v1/menu", tags=["Menu"])
 
 # Root endpoint
 @app.get("/")
