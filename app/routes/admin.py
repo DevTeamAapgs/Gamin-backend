@@ -16,7 +16,7 @@ from passlib.context import CryptContext
 from bson import ObjectId
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="", tags=["admin"])
 security = HTTPBearer()
 
 # Password hashing
@@ -36,11 +36,12 @@ def get_password_hash(password: str) -> str:
 async def admin_login(admin_data: AdminLogin, response: Response):
     """Admin login with username and password."""
     try:
+        print(admin_data.username,"username")
         db = get_database()
         
         # Find admin by username
         admin_doc = await db.players.find_one({
-            "username": admin_data.username,
+            "email": admin_data.username,
             "is_admin": True
         })
         
