@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     aes_key: str = os.getenv("AES_KEY", "your-32-byte-aes-key-for-encryption")
     salt: str = os.getenv("SALT", "your-salt-for-encryption")
     
+    # Cookie Configuration
+    cookie_domain: str = os.getenv("COOKIE_DOMAIN", "localhost")
+    cookie_secure: bool = os.getenv("COOKIE_SECURE", "False").lower() == "true"
+    cookie_httponly: bool = os.getenv("COOKIE_HTTPONLY", "True").lower() == "true"
+    cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax")
+    access_token_cookie_name: str = os.getenv("ACCESS_TOKEN_COOKIE_NAME", "access_token")
+    refresh_token_cookie_name: str = os.getenv("REFRESH_TOKEN_COOKIE_NAME", "refresh_token")
+    
     # 1inch API Configuration
     oneinch_api_url: str = os.getenv("ONEINCH_API_URL", "https://api.1inch.dev")
     oneinch_api_key: str = os.getenv("ONEINCH_API_KEY", "")
@@ -27,9 +35,6 @@ class Settings(BaseSettings):
     default_entry_cost: int = int(os.getenv("DEFAULT_ENTRY_COST", "100"))
     default_reward_multiplier: float = float(os.getenv("DEFAULT_REWARD_MULTIPLIER", "1.5"))
     
-    # Admin Configuration
-    admin_username: str = os.getenv("ADMIN_USERNAME", "admin")
-    admin_password: str = os.getenv("ADMIN_PASSWORD", "admin-secure-password")
     
     # Server Configuration
     host: str = os.getenv("HOST", "0.0.0.0")

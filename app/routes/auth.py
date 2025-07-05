@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.schemas.player import PlayerCreate, PlayerLogin, TokenResponse, PlayerResponse
 from app.models.player import Player
 from app.auth.token_manager import token_manager
+from app.auth.cookie_auth import get_current_user, get_current_user_optional
+from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
 from app.db.mongo import get_database
 from app.core.config import settings
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,7 +15,7 @@ router = APIRouter()
 security = HTTPBearer()
 
 @router.post("/register", response_model=TokenResponse)
-async def register_player(player_data: PlayerCreate, request: Request):
+async def register_player(player_data: PlayerCreate, request: Request, response: Response):
     """Register a new player."""
     try:
         db = get_database()
@@ -53,6 +56,9 @@ async def register_player(player_data: PlayerCreate, request: Request):
         
         logger.info(f"New player registered: {player.username}")
         
+        # Set cookies
+        set_auth_cookies(response, access_token, refresh_token)
+        
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -66,7 +72,7 @@ async def register_player(player_data: PlayerCreate, request: Request):
         raise HTTPException(status_code=500, detail="Registration failed")
 
 @router.post("/login", response_model=TokenResponse)
-async def login_player(player_data: PlayerLogin, request: Request):
+async def login_player(player_data: PlayerLogin, request: Request, response: Response):
     """Login existing player."""
     try:
         db = get_database()
@@ -105,6 +111,9 @@ async def login_player(player_data: PlayerLogin, request: Request):
         
         logger.info(f"Player logged in: {player.username}")
         
+        # Set cookies
+        set_auth_cookies(response, access_token, refresh_token)
+        
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -118,9 +127,16 @@ async def login_player(player_data: PlayerLogin, request: Request):
         raise HTTPException(status_code=500, detail="Login failed")
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(refresh_token: str, request: Request):
-    """Refresh access token using refresh token."""
+async def refresh_token(request: Request, response: Response):
+    """Refresh access token using refresh token from cookies."""
     try:
+        # Get refresh token from cookies
+        from app.auth.cookie_auth import cookie_auth
+        refresh_token = cookie_auth.get_refresh_token_from_cookies(request)
+        
+        if not refresh_token:
+            raise HTTPException(status_code=401, detail="No refresh token found")
+        
         # Verify refresh token
         payload = token_manager.verify_refresh_token(refresh_token)
         if not payload:
@@ -154,6 +170,9 @@ async def refresh_token(refresh_token: str, request: Request):
         
         logger.info(f"Token refreshed for player: {player.username}")
         
+        # Set new cookies
+        set_auth_cookies(response, access_token, new_refresh_token)
+        
         return TokenResponse(
             access_token=access_token,
             refresh_token=new_refresh_token,
@@ -167,23 +186,26 @@ async def refresh_token(refresh_token: str, request: Request):
         raise HTTPException(status_code=500, detail="Token refresh failed")
 
 @router.post("/logout")
-async def logout(credentials: HTTPAuthorizationCredentials = Depends(security), request: Request = None):
+async def logout(request: Request, response: Response):
     """Logout player and invalidate session."""
     try:
-        # Verify access token
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        # Get token from cookies or header
+        from app.auth.cookie_auth import cookie_auth
+        token = cookie_auth.get_token(request)
         
-        player_id = payload.get("sub")
-        if not player_id:
-            raise HTTPException(status_code=401, detail="Invalid token payload")
+        if token:
+            # Verify access token
+            payload = token_manager.verify_token(token)
+            if payload:
+                player_id = payload.get("sub")
+                if player_id:
+                    # Invalidate session
+                    token_hash = token_manager._generate_token_seed()  # Simplified for demo
+                    await token_manager.invalidate_session(token_hash)
+                    logger.info(f"Player logged out: {player_id}")
         
-        # Invalidate session
-        token_hash = token_manager._generate_token_seed()  # Simplified for demo
-        await token_manager.invalidate_session(token_hash)
-        
-        logger.info(f"Player logged out: {player_id}")
+        # Clear cookies
+        clear_auth_cookies(response)
         
         return {"message": "Successfully logged out"}
         
@@ -194,15 +216,10 @@ async def logout(credentials: HTTPAuthorizationCredentials = Depends(security), 
         raise HTTPException(status_code=500, detail="Logout failed")
 
 @router.get("/me", response_model=PlayerResponse)
-async def get_current_player(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_player(current_user: dict = Depends(get_current_user)):
     """Get current player information."""
     try:
-        # Verify access token
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
-        
-        player_id = payload.get("sub")
+        player_id = current_user.get("sub")
         if not player_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
         

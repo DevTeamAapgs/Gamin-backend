@@ -3,13 +3,13 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
 class PlayerCreate(BaseModel):
-    wallet_address: str = Field(..., min_length=42, max_length=42)
+    wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
     username: str = Field(..., min_length=3, max_length=20)
     email: Optional[EmailStr] = None
     device_fingerprint: Optional[str] = None
 
 class PlayerLogin(BaseModel):
-    wallet_address: str = Field(..., min_length=42, max_length=42)
+    wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
     device_fingerprint: str
     ip_address: str
 
@@ -28,7 +28,7 @@ class PlayerUpdate(BaseModel):
 
 class PlayerResponse(BaseModel):
     id: str
-    wallet_address: str
+    wallet_address: Optional[str] 
     username: str
     email: Optional[str] = None
     token_balance: float

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.openapi.utils import get_openapi
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 import logging
@@ -31,6 +32,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         
+#         response.headers["Content-Security-Policy"] = (
+#     "default-src 'self'; "
+#     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/ https://fastapi.tiangolo.com; "
+#     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/; "
+#     "img-src 'self' data: https://fastapi.tiangolo.com; "
+#     "font-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/;"
+# )
+
         return response
 
 @asynccontextmanager
@@ -54,7 +63,32 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
+    swagger_ui_parameters={
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "tryItOutEnabled": True,
+        "requestSnippetsEnabled": True,
+        "defaultModelsExpandDepth": 1,
+        "defaultModelExpandDepth": 1,
+        "docExpansion": "list",
+        "filter": True,
+        "showExtensions": True,
+        "showCommonExtensions": True,
+        "syntaxHighlight.theme": "monokai",
+        "syntaxHighlight.activated": True,
+        "oauth2RedirectUrl": "http://localhost:8000/docs/oauth2-redirect",
+        "initOAuth": {
+            "clientId": "swagger-ui",
+            "clientSecret": "swagger-secret",
+            "realm": "swagger-ui",
+            "appName": "Gaming Platform API",
+            "scopes": "read write",
+            "additionalQueryStringParams": {},
+            "useBasicAuthenticationWithAccessCodeGrant": False,
+            "usePkceWithAuthorizationCodeGrant": False
+        }
+    }
 )
 
 # Add security headers middleware first
@@ -77,6 +111,51 @@ app.add_middleware(
     exclude_paths=["/health", "/docs", "/openapi.json", "/favicon.ico"],
     enable_db_logging=True
 )
+
+# Custom OpenAPI configuration for cookie authentication
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # Add cookie authentication scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "cookieAuth": {
+            "type": "apiKey",
+            "in": "cookie",
+            "name": "access_token",
+            "description": "Access token stored in HTTP-only cookie"
+        },
+        "bearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Bearer token for API clients (fallback)"
+        }
+    }
+    
+    # Add security requirements to protected endpoints
+    for path in openapi_schema["paths"]:
+        for method in openapi_schema["paths"][path]:
+            if method.lower() in ["get", "post", "put", "delete", "patch"]:
+                endpoint = openapi_schema["paths"][path][method.lower()]
+                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin"] for tag in endpoint["tags"]):
+                    if "security" not in endpoint:
+                        endpoint["security"] = [
+                            {"cookieAuth": []},
+                            {"bearerAuth": []}
+                        ]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 # Global exception handler
 @app.exception_handler(Exception)

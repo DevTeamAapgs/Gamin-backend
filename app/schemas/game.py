@@ -78,7 +78,7 @@ class ReplayResponse(BaseModel):
 class LeaderboardEntry(BaseModel):
     player_id: str
     username: str
-    wallet_address: str
+    wallet_address: Optional[str] 
     total_tokens_earned: float
     total_games_played: int
     win_rate: float

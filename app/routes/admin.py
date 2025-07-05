@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.schemas.game import GameLevelUpdate, LeaderboardResponse
 from app.schemas.player import AdminLogin, AdminCreate, AdminResponse, TokenResponse
 from app.auth.token_manager import token_manager
+from app.auth.cookie_auth import verify_admin, get_current_user
+from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
 from app.services.analytics import analytics_service
 from app.db.mongo import get_database
 from app.services.logging_service import logging_service
@@ -28,22 +30,10 @@ def get_password_hash(password: str) -> str:
     """Hash a password."""
     return pwd_context.hash(password)
 
-async def verify_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Verify admin access."""
-    payload = token_manager.verify_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid access token")
-    
-    # Check if user is admin
-    db = get_database()
-    admin_doc = await db.players.find_one({"_id": ObjectId(payload.get("sub"))})
-    if not admin_doc or not admin_doc.get("is_admin"):
-        raise HTTPException(status_code=403, detail="Admin access required")
-    
-    return payload
+# Remove the old verify_admin function as we're importing it from cookie_auth
 
 @router.post("/login", response_model=TokenResponse)
-async def admin_login(admin_data: AdminLogin):
+async def admin_login(admin_data: AdminLogin, response: Response):
     """Admin login with username and password."""
     try:
         db = get_database()
@@ -88,6 +78,9 @@ async def admin_login(admin_data: AdminLogin):
         
         logger.info(f"Admin logged in: {admin_doc['username']}")
         
+        # Set cookies
+        set_auth_cookies(response, access_token, refresh_token)
+        
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
@@ -120,7 +113,7 @@ async def create_admin(admin_data: AdminCreate, current_admin: dict = Depends(ve
             "username": admin_data.username,
             "email": admin_data.email,
             "password_hash": get_password_hash(admin_data.password),
-            "wallet_address": "0x0000000000000000000000000000000000000000",  # Placeholder
+            "wallet_address": None,  # Placeholder
             "is_admin": True,
             "is_active": True,
             "is_verified": True,
@@ -179,12 +172,92 @@ async def get_current_admin(current_admin: dict = Depends(verify_admin)):
         logger.error(f"Get current admin failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to get admin information")
 
+@router.post("/refresh", response_model=TokenResponse)
+async def admin_refresh_token(request: Request, response: Response):
+    """Refresh admin access token using refresh token from cookies."""
+    try:
+        # Get refresh token from cookies
+        from app.auth.cookie_auth import cookie_auth
+        refresh_token = cookie_auth.get_refresh_token_from_cookies(request)
+        
+        if not refresh_token:
+            raise HTTPException(status_code=401, detail="No refresh token found")
+        
+        # Verify refresh token
+        payload = token_manager.verify_refresh_token(refresh_token)
+        if not payload:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+        
+        # Check if it's an admin token
+        if not payload.get("is_admin"):
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        admin_id = payload.get("sub")
+        username = payload.get("username")
+        
+        if not admin_id or not username:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+        
+        # Get admin from database
+        db = get_database()
+        admin_doc = await db.players.find_one({
+            "_id": ObjectId(admin_id),
+            "is_admin": True,
+            "is_active": True
+        })
+        
+        if not admin_doc:
+            raise HTTPException(status_code=404, detail="Admin not found or inactive")
+        
+        # Generate new tokens
+        access_token = token_manager.create_access_token({
+            "sub": str(admin_doc["_id"]), 
+            "username": admin_doc["username"],
+            "is_admin": True
+        })
+        
+        new_refresh_token = token_manager.create_refresh_token({
+            "sub": str(admin_doc["_id"]),
+            "username": admin_doc["username"],
+            "is_admin": True
+        })
+        
+        logger.info(f"Admin token refreshed: {admin_doc['username']}")
+        
+        # Set new cookies
+        set_auth_cookies(response, access_token, new_refresh_token)
+        
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=new_refresh_token,
+            expires_in=settings.access_token_expire_minutes * 60
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin token refresh failed: {e}")
+        raise HTTPException(status_code=500, detail="Token refresh failed")
+
+@router.post("/logout")
+async def admin_logout(request: Request, response: Response):
+    """Admin logout - clear authentication cookies."""
+    try:
+        # Clear authentication cookies
+        clear_auth_cookies(response)
+        
+        logger.info("Admin logged out successfully")
+        
+        return {"message": "Successfully logged out"}
+        
+    except Exception as e:
+        logger.error(f"Admin logout failed: {e}")
+        raise HTTPException(status_code=500, detail="Logout failed")
+
 @router.get("/dashboard")
-async def get_admin_dashboard(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_admin_dashboard(current_admin: dict = Depends(verify_admin)):
     """Get admin dashboard data."""
     try:
-        await verify_admin(credentials)
-        
         # Get platform analytics
         platform_stats = await analytics_service.get_platform_analytics()
         
@@ -200,11 +273,9 @@ async def get_admin_dashboard(credentials: HTTPAuthorizationCredentials = Depend
         raise HTTPException(status_code=500, detail="Failed to get admin dashboard")
 
 @router.get("/analytics/platform")
-async def get_platform_analytics(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_platform_analytics(current_admin: dict = Depends(verify_admin)):
     """Get comprehensive platform analytics."""
     try:
-        await verify_admin(credentials)
-        
         analytics = await analytics_service.get_platform_analytics()
         
         return analytics

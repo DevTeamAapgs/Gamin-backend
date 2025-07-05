@@ -52,23 +52,29 @@ async def init_database():
         await db.players.create_index("username", unique=True)
         await db.players.create_index("email", unique=True)
         await db.players.create_index("wallet_address", unique=True)
-        await db.players.create_index("created_at")
+        await db.players.create_index("created_on")
+        await db.players.create_index("status")
+        await db.players.create_index("dels")
         await db.players.create_index("last_login")
         logger.info("Created indexes for players collection")
         
         # Create indexes for games collection
         await db.games.create_index("player_id")
         await db.games.create_index("game_type")
+        await db.games.create_index("game_status")
+        await db.games.create_index("created_on")
         await db.games.create_index("status")
-        await db.games.create_index("created_at")
+        await db.games.create_index("dels")
         await db.games.create_index("completed_at")
         logger.info("Created indexes for games collection")
         
         # Create indexes for transactions collection
         await db.transactions.create_index("player_id")
         await db.transactions.create_index("transaction_type")
+        await db.transactions.create_index("transaction_status")
+        await db.transactions.create_index("created_on")
         await db.transactions.create_index("status")
-        await db.transactions.create_index("created_at")
+        await db.transactions.create_index("dels")
         await db.transactions.create_index("tx_hash", unique=True)
         logger.info("Created indexes for transactions collection")
         
@@ -83,7 +89,9 @@ async def init_database():
         await db.request_logs.create_index("path")
         await db.request_logs.create_index("status_code")
         await db.request_logs.create_index("client_ip")
-        await db.request_logs.create_index("created_at")
+        await db.request_logs.create_index("created_on")
+        await db.request_logs.create_index("status")
+        await db.request_logs.create_index("dels")
         await db.request_logs.create_index("ttl", expireAfterSeconds=0)  # TTL index
         logger.info("Created indexes for request_logs collection")
         
@@ -92,7 +100,9 @@ async def init_database():
         await db.security_logs.create_index("event_type")
         await db.security_logs.create_index("severity")
         await db.security_logs.create_index("client_ip")
-        await db.security_logs.create_index("created_at")
+        await db.security_logs.create_index("created_on")
+        await db.security_logs.create_index("status")
+        await db.security_logs.create_index("dels")
         await db.security_logs.create_index("ttl", expireAfterSeconds=0)  # TTL index
         logger.info("Created indexes for security_logs collection")
         
@@ -100,8 +110,10 @@ async def init_database():
         await db.game_action_logs.create_index("game_id")
         await db.game_action_logs.create_index("player_id")
         await db.game_action_logs.create_index("action_type")
-        await db.game_action_logs.create_index("session_id")
-        await db.game_action_logs.create_index("timestamp")
+        await db.game_action_logs.create_index("created_on")
+        await db.game_action_logs.create_index("status")
+        await db.game_action_logs.create_index("dels")
+        await db.game_action_logs.create_index("ttl", expireAfterSeconds=0)  # TTL index
         logger.info("Created indexes for game_action_logs collection")
         
         # Insert default game levels if they don't exist

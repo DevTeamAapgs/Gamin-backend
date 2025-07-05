@@ -159,11 +159,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/ https://fastapi.tiangolo.com; "
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/; "
-            "img-src 'self' https://fastapi.tiangolo.com data:; "
-            "font-src 'self' https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/;"
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/ https://fastapi.tiangolo.com; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/; "
+            "img-src 'self' data: https://fastapi.tiangolo.com; "
+            "font-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/;"
         )
+
 
         return response
 
