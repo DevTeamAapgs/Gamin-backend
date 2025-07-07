@@ -17,3 +17,5 @@ pymongo==4.10.1
 dnspython==2.5.0
 pydantic[email]==2.11.7
 email-validator
+Pillow==10.4.0
+requests==2.32.3

@@ -5,6 +5,7 @@ import base64
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import json
+import string
 
 def generate_uuid() -> str:
     """Generate a unique UUID string."""
@@ -246,4 +247,31 @@ def validate_ip_address(ip: str) -> bool:
                 return False
         return True
     except ValueError:
-        return False 
+        return False
+
+def generate_unique_wallet_address() -> str:
+    """
+    Generate a unique Ethereum-style wallet address.
+    
+    Returns:
+        str: A unique wallet address in the format 0x + 40 hex characters
+    """
+    # Generate 40 random hex characters (20 bytes)
+    hex_chars = string.hexdigits.lower()[:16]  # 0-9, a-f
+    wallet_hex = ''.join(secrets.choice(hex_chars) for _ in range(40))
+    
+    # Return in Ethereum address format
+    return f"0x{wallet_hex}"
+
+def generate_secure_token(length: int = 32) -> str:
+    """
+    Generate a secure random token.
+    
+    Args:
+        length (int): Length of the token in characters
+        
+    Returns:
+        str: A secure random token
+    """
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length)) 

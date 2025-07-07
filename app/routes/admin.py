@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.schemas.game import GameLevelUpdate, LeaderboardResponse
-from app.schemas.player import AdminLogin, AdminCreate, AdminResponse, TokenResponse
+from app.schemas.player import AdminLogin, AdminCreate
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import verify_admin, get_current_user
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
@@ -14,6 +14,7 @@ import logging
 from typing import Optional, List
 from passlib.context import CryptContext
 from bson import ObjectId
+from app.common.schemas import TokenResponse, AdminResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["admin"])
@@ -42,7 +43,7 @@ async def admin_login(admin_data: AdminLogin, response: Response):
         # Find admin by username
         admin_doc = await db.players.find_one({
             "email": admin_data.username,
-            "is_admin": True
+            "playertype": 1
         })
         
        
@@ -67,14 +68,14 @@ async def admin_login(admin_data: AdminLogin, response: Response):
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "is_admin": True
+            "playertype": admin_doc.get("playertype", 1)
         })
         
         # Create refresh token
         refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "is_admin": True
+            "playertype": admin_doc.get("playertype", 1)
         })
         
         logger.info(f"Admin logged in: {admin_doc['username']}")
@@ -103,7 +104,7 @@ async def create_admin(admin_data: AdminCreate, current_admin: dict = Depends(ve
         # Check if admin already exists
         existing_admin = await db.players.find_one({
             "username": admin_data.username,
-            "is_admin": True
+            "playertype": 1
         })
         
         if existing_admin:
@@ -115,7 +116,7 @@ async def create_admin(admin_data: AdminCreate, current_admin: dict = Depends(ve
             "email": admin_data.email,
             "password_hash": get_password_hash(admin_data.password),
             "wallet_address": None,  # Placeholder
-            "is_admin": True,
+            "playertype": 1,
             "is_active": True,
             "is_verified": True,
             "token_balance": 0,
@@ -135,7 +136,7 @@ async def create_admin(admin_data: AdminCreate, current_admin: dict = Depends(ve
             id=str(admin_user["_id"]),
             username=admin_user["username"],
             email=admin_user["email"],
-            is_admin=admin_user["is_admin"],
+            is_admin=True,  # Always True for admin users
             is_active=admin_user["is_active"],
             created_at=admin_user["created_at"],
             last_login=admin_user["last_login"]
@@ -154,14 +155,14 @@ async def get_current_admin(current_admin: dict = Depends(verify_admin)):
         db = get_database()
         admin_doc = await db.players.find_one({"_id": ObjectId(current_admin.get("sub"))})
         
-        if not admin_doc or not admin_doc.get("is_admin"):
+        if not admin_doc or admin_doc.get("playertype") != 1:
             raise HTTPException(status_code=404, detail="Admin not found")
         
         return AdminResponse(
             id=str(admin_doc["_id"]),
             username=admin_doc["username"],
             email=admin_doc.get("email"),
-            is_admin=admin_doc["is_admin"],
+            is_admin=True,  # Always True for admin users
             is_active=admin_doc.get("is_active", True),
             created_at=admin_doc["created_at"],
             last_login=admin_doc.get("last_login")
@@ -190,7 +191,7 @@ async def admin_refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         
         # Check if it's an admin token
-        if not payload.get("is_admin"):
+        if payload.get("playertype") != 1:
             raise HTTPException(status_code=403, detail="Admin access required")
         
         admin_id = payload.get("sub")

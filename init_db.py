@@ -19,6 +19,7 @@ from app.db.mongo import connect_to_mongo, close_mongo_connection, get_database
 from app.models.game import GameLevel
 from app.models.player import Player
 from app.auth.token_manager import token_manager
+from app.core.enums import PlayerType
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -178,7 +179,7 @@ async def init_database():
                 "email": "admin@gamingplatform.com",
                 "wallet_address": "0x0000000000000000000000000000000000000000",
                 "password_hash": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8eG",  # "admin123"
-                "is_admin": True,
+                "playertype": PlayerType.SUPERADMIN,
                 "is_verified": True,
                 "token_balance": 0,
                 "total_games_played": 0,

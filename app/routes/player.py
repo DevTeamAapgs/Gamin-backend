@@ -1,15 +1,28 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query, status, Body, UploadFile, File, Form
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse
+from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse, PlayerCreate, PlayerStatusUpdate, PlayerListResponse
 from app.models.player import Player
 from app.auth.token_manager import token_manager
 from app.services.analytics import analytics_service
 from app.db.mongo import get_database
+from app.utils.helpers import generate_unique_wallet_address
+from app.common.prefix import generate_prefix
+from app.common.profile_pic_upload.upload_handler import profile_pic_handler
 import logging
+from typing import List, Optional
+from bson import ObjectId
+from passlib.hash import bcrypt
+from datetime import datetime
+from fastapi.responses import Response
+from pydantic import EmailStr
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
+
+async def get_role_name(role_id, db):
+    role = await db.roles.find_one({"_id": ObjectId(role_id)})
+    return role["role"] if role else None
 
 @router.get("/profile", response_model=PlayerResponse)
 async def get_player_profile(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -28,21 +41,11 @@ async def get_player_profile(credentials: HTTPAuthorizationCredentials = Depends
         if not player_doc:
             raise HTTPException(status_code=404, detail="Player not found")
         
-        player = Player(**player_doc)
+        player_doc["id"] = str(player_doc["_id"])
+        player_doc["fk_role_id"] = str(player_doc["fk_role_id"])
+        player_doc["role"] = await get_role_name(player_doc["fk_role_id"], db)
         
-        return PlayerResponse(
-            id=str(player.id),
-            wallet_address=player.wallet_address,
-            username=player.username,
-            email=player.email,
-            token_balance=player.token_balance,
-            total_games_played=player.total_games_played,
-            total_tokens_earned=player.total_tokens_earned,
-            total_tokens_spent=player.total_tokens_spent,
-            is_active=player.is_active,
-            created_at=player.created_at,
-            last_login=player.last_login
-        )
+        return PlayerResponse(**player_doc)
         
     except HTTPException:
         raise
@@ -87,21 +90,11 @@ async def update_player_profile(
         
         # Get updated player
         player_doc = await db.players.find_one({"_id": player_id})
-        player = Player(**player_doc)
+        player_doc["id"] = str(player_doc["_id"])
+        player_doc["fk_role_id"] = str(player_doc["fk_role_id"])
+        player_doc["role"] = await get_role_name(player_doc["fk_role_id"], db)
         
-        return PlayerResponse(
-            id=str(player.id),
-            wallet_address=player.wallet_address,
-            username=player.username,
-            email=player.email,
-            token_balance=player.token_balance,
-            total_games_played=player.total_games_played,
-            total_tokens_earned=player.total_tokens_earned,
-            total_tokens_spent=player.total_tokens_spent,
-            is_active=player.is_active,
-            created_at=player.created_at,
-            last_login=player.last_login
-        )
+        return PlayerResponse(**player_doc)
         
     except HTTPException:
         raise
@@ -126,12 +119,10 @@ async def get_player_balance(credentials: HTTPAuthorizationCredentials = Depends
         if not player_doc:
             raise HTTPException(status_code=404, detail="Player not found")
         
-        player = Player(**player_doc)
-        
         return PlayerBalance(
-            token_balance=player.token_balance,
-            total_earned=player.total_tokens_earned,
-            total_spent=player.total_tokens_spent
+            token_balance=player_doc.get("token_balance", 0),
+            total_earned=player_doc.get("total_tokens_earned", 0),
+            total_spent=player_doc.get("total_tokens_spent", 0)
         )
         
     except HTTPException:
@@ -253,4 +244,6 @@ async def get_player_analytics(credentials: HTTPAuthorizationCredentials = Depen
         raise
     except Exception as e:
         logger.error(f"Get player analytics failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get player analytics") 
+        raise HTTPException(status_code=500, detail="Failed to get player analytics")
+
+ 

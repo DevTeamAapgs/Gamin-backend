@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.schemas.player import PlayerCreate, PlayerLogin, TokenResponse, PlayerResponse
+from app.schemas.player import PlayerCreate, PlayerLogin, PlayerResponse
 from app.models.player import Player
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import get_current_user, get_current_user_optional
@@ -9,6 +9,7 @@ from app.db.mongo import get_database
 from app.core.config import settings
 from datetime import datetime
 import logging
+from app.common.schemas import TokenResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
