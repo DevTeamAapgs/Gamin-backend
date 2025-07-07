@@ -6,9 +6,6 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import json
 
-def generate_uuid() -> str:
-    """Generate a unique UUID string."""
-    return str(uuid.uuid4())
 
 def generate_device_fingerprint(user_agent: str, screen_res: str, timezone: str) -> str:
     """Generate a device fingerprint from browser data."""

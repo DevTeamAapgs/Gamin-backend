@@ -249,4 +249,89 @@ GET /api/v1/admin/dashboard
 POST /api/v1/auth/logout
 ```
 
-This setup provides a seamless testing experience in Swagger UI while maintaining security and flexibility for different client types. 
+This setup provides a seamless testing experience in Swagger UI while maintaining security and flexibility for different client types.
+
+## Authentication Types
+
+### 1. Regular Player Authentication
+For player-specific endpoints (auth, player, game):
+- Use `/api/v1/auth/login` or `/api/v1/auth/register`
+- These create tokens without admin privileges
+
+### 2. Admin Authentication (Required for Roles)
+For admin and roles endpoints:
+- **Use `/api/v1/admin/login`** - This is crucial for admin access
+- This creates tokens with `is_admin: True` flag
+- Required for all roles management endpoints
+
+## Step-by-Step Authentication in Swagger UI
+
+### For Admin/Roles Access:
+
+1. **Open Swagger UI** at `/docs`
+
+2. **Find the Admin Login endpoint**:
+   - Navigate to the "Admin" section
+   - Find `POST /api/v1/admin/login`
+
+3. **Login with admin credentials**:
+   ```json
+   {
+     "username": "admin@example.com",
+     "password": "your_admin_password"
+   }
+   ```
+
+4. **Execute the login request**
+   - This will set authentication cookies automatically
+   - The response will include access and refresh tokens
+
+5. **Access Roles endpoints**:
+   - Navigate to the "Roles" section
+   - All endpoints should now show a lock icon 🔒
+   - Click "Authorize" button if needed
+   - You can now test roles endpoints
+
+### For Regular Player Access:
+
+1. **Use `/api/v1/auth/login`** or `/api/v1/auth/register`
+2. **Login with player credentials**:
+   ```json
+   {
+     "wallet_address": "0x...",
+     "device_fingerprint": "device123"
+   }
+   ```
+
+## Important Notes
+
+- **Admin tokens** include `is_admin: True` in the payload
+- **Player tokens** do not include admin privileges
+- **Roles endpoints** require admin authentication
+- **Cookies are automatically set** when using the login endpoints
+- **Swagger UI persists authorization** between requests
+
+## Troubleshooting
+
+### If Roles endpoints show "Unauthorized":
+1. Make sure you logged in via `/api/v1/admin/login`
+2. Check that you're using admin credentials
+3. Verify the admin account has `is_admin: True` in the database
+
+### If authentication doesn't persist:
+1. Check browser cookie settings
+2. Ensure `withCredentials: true` is set in Swagger UI
+3. Try refreshing the page and re-authenticating
+
+## Database Setup
+
+Ensure you have an admin user in the database:
+```javascript
+{
+  "username": "admin",
+  "email": "admin@example.com", 
+  "password_hash": "hashed_password",
+  "is_admin": true,
+  "is_active": true
+}
+``` 

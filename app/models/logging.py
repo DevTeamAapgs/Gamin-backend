@@ -2,7 +2,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from pydantic import Field
 from bson import ObjectId
-from app.models.base import BaseDocument, PyObjectId
+from app.models.base import BaseDocument 
+from app.utils.pyobjectid import PyObjectId
 
 class RequestLog(BaseDocument):
     """Request logging model with standardized audit fields"""

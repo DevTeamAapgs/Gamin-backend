@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import Field
-from app.models.base import BaseDocument, PyObjectId
+from app.models.base import BaseDocument
+from app.utils.pyobjectid import PyObjectId
 
 class Game(BaseDocument):
     player_id: PyObjectId
