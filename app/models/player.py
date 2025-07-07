@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import Field
-from app.models.base import BaseDocument, PyObjectId
+from app.models.base import BaseDocument
+from app.utils.pyobjectid import PyObjectId
 
 class Player(BaseDocument):
     wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)

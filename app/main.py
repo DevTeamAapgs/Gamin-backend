@@ -13,7 +13,7 @@ from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
 
 # Import routes
-from app.routes import auth, player, game, admin, socket
+from app.routes import auth, player, game, admin, socket, roles
 
 # Configure logging
 logging.basicConfig(
@@ -77,17 +77,7 @@ app = FastAPI(
         "showCommonExtensions": True,
         "syntaxHighlight.theme": "monokai",
         "syntaxHighlight.activated": True,
-        "oauth2RedirectUrl": "http://localhost:8000/docs/oauth2-redirect",
-        "initOAuth": {
-            "clientId": "swagger-ui",
-            "clientSecret": "swagger-secret",
-            "realm": "swagger-ui",
-            "appName": "Gaming Platform API",
-            "scopes": "read write",
-            "additionalQueryStringParams": {},
-            "useBasicAuthenticationWithAccessCodeGrant": False,
-            "usePkceWithAuthorizationCodeGrant": False
-        }
+        "withCredentials": True,
     }
 )
 
@@ -112,7 +102,7 @@ app.add_middleware(
     enable_db_logging=True
 )
 
-# Custom OpenAPI configuration for cookie authentication
+# # Custom OpenAPI configuration for cookie authentication
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -140,22 +130,64 @@ def custom_openapi():
         }
     }
     
+
+
+    openapi_schema["security"] = [
+        {"cookieAuth": []},
+        {"bearerAuth": []}
+    ]
+
     # Add security requirements to protected endpoints
     for path in openapi_schema["paths"]:
         for method in openapi_schema["paths"][path]:
             if method.lower() in ["get", "post", "put", "delete", "patch"]:
                 endpoint = openapi_schema["paths"][path][method.lower()]
-                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin"] for tag in endpoint["tags"]):
-                    if "security" not in endpoint:
-                        endpoint["security"] = [
-                            {"cookieAuth": []},
-                            {"bearerAuth": []}
-                        ]
+                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin","Roles"] for tag in endpoint["tags"]):
+                    # if "security" not in endpoint:
+                    endpoint["security"] = [
+                        {"cookieAuth": []},
+                        {"bearerAuth": []}
+                    ]
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
+# def custom_openapi():
+#     print("🔧 Generating OpenAPI Schema...")
+#     if app.openapi_schema:
+#         return app.openapi_schema
+
+#     openapi_schema = get_openapi(
+#         title=app.title,
+#         version=app.version,
+#         description=app.description,
+#         routes=app.routes,
+#     )
+
+#     openapi_schema["components"]["securitySchemes"] = {
+#         "cookieAuth": {
+#             "type": "apiKey",
+#             "in": "cookie",
+#             "name": "access_token"
+#         },
+#         "bearerAuth": {
+#             "type": "http",
+#             "scheme": "bearer",
+#             "bearerFormat": "JWT"
+#         }
+#     }
+
+#     openapi_schema["security"] = [
+#         {"cookieAuth": []},
+#         {"bearerAuth": []}
+#     ]
+
+#     app.openapi_schema = openapi_schema
+#     return app.openapi_schema
+
+
 app.openapi = custom_openapi
+
 
 # Global exception handler
 @app.exception_handler(Exception)
@@ -177,6 +209,7 @@ app.include_router(player.router, prefix="/api/v1/player", tags=["Player"])
 app.include_router(game.router, prefix="/api/v1/game", tags=["Game"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])
+app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
 
 # Root endpoint
 @app.get("/")
