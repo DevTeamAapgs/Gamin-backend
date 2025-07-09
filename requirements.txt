@@ -17,3 +17,4 @@ pymongo==4.10.1
 dnspython==2.5.0
 pydantic[email]==2.11.7
 email-validator
+pycryptodome == 3.23.0

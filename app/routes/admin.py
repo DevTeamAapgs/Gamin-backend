@@ -24,6 +24,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
+    print(plain_password,hashed_password,"plain_password,hashed_password")
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
@@ -51,6 +52,7 @@ async def admin_login(admin_data: AdminLogin, response: Response):
         print(get_password_hash(admin_data.password),"pwd")
         # Verify password
         if not verify_password(admin_data.password, admin_doc.get("password_hash", "")):
+            print("invalid credentials")
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         # Check if admin is active

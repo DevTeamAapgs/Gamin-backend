@@ -9,7 +9,7 @@ import json
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.models.roles import (
-    MenuItemModel, MenusubmenuAndPermission, RolesModel, RoleCreate, RoleUpdate, RolePatch, RoleResponse,
+    MenuItemModel, MenusubmenuAndPermission, PermissionSubmenuModel,  RolesModel, RoleCreate, RoleUpdate, RolePatch, RoleResponse,
     GridDataRequest, GridDataResponse, PermissionDetails
 )
 from app.models.menu import (
@@ -29,7 +29,7 @@ security = HTTPBearer()
 SORT_BY_DESC = -1
 EMPLOYEE_SPECIAL_PERMISSION = ["dashboard", "profile", "settings"]  # Example special permissions
 
-async def get_submenus(menu_id: str, db) -> List[Dict]:
+async def get_submenus(menu_id: str, db) -> List[PermissionSubmenuModel]:
     """Get submenus for a given menu ID"""
     pipeline = [
         {
@@ -55,7 +55,9 @@ async def get_submenus(menu_id: str, db) -> List[Dict]:
             }
         },
     ]
-    return await db.menu_master.aggregate(pipeline).to_list(length=None)
+    result = await db.menu_master.aggregate(pipeline).to_list()
+    
+    return   [PermissionSubmenuModel(**doc) for doc in result]
 
 async def get_permissions(menu_id: str, db) -> List[Dict]:
     """Get permissions for a given menu ID"""
@@ -87,22 +89,21 @@ async def get_permissions(menu_id: str, db) -> List[Dict]:
 
 @router.get("/grid-data", response_model=GridDataResponse, tags=["Roles"])
 async def get_grid_data(
-    data: str = Query(..., description="JSON string with page, count, searchString"),
+    page: int = Query(1, description="Page number", ge=1),
+    count: int = Query(10, description="Number of items per page", ge=1, le=100),
+    searchString: Optional[str] = Query("", description="Search term for role name"),
     db: AsyncIOMotorDatabase = Depends(get_database),
     current_user: dict = Depends(verify_admin)
 ):
     """Get roles data for grid display with pagination and search"""
     try:
         
-        # Parse the data parameter
-        grid_data = json.loads(data)
-        search_term = grid_data.get("searchString", "")
-        page = int(grid_data.get("page", 1))
-        per_page = int(grid_data.get("count", 10))
+        # Use the query parameters directly
+        search_term = searchString
+        per_page = count
         
-        # Build aggregation pipeline
+        # Build aggregation pipeline with facet for data and count
         pipeline = []
-        
         
         # Add search filter if search term provided
         if search_term:
@@ -112,42 +113,38 @@ async def get_grid_data(
                 }
             })
         
-        # Sort by updated_on descending
-        pipeline.append({"$sort": {"updated_on": SORT_BY_DESC}})
-        
-        # Project only needed fields
-        pipeline.append({"$project": {"_id": 1, "role_name": 1, "status": 1}})
-        
-        # Add pagination
-        skip = (page - 1) * per_page
-        pipeline.append({"$skip": skip})
-        pipeline.append({"$limit": per_page})
+        # Use facet to get both data and count in single query
+        pipeline.append({
+            "$facet": {
+                "data": [
+                    {"$sort": {"updated_on": SORT_BY_DESC}},
+                    {"$project": {"_id": 1, "role_name": 1, "status": 1}},
+                    {"$skip": (page - 1) * per_page},
+                    {"$limit": per_page}
+                ],
+                "total": [
+                    {"$count": "count"}
+                ]
+            }
+        })
         
         # Execute aggregation
-        filtered_data = await db.roles.aggregate(pipeline).to_list(length=per_page)
+        result = await db.roles.aggregate(pipeline).to_list(length=1)
+        facet_result = result[0] if result else {"data": [], "total": []}
         
-        # Calculate total count
-        count_pipeline = []
-        if search_term:
-            count_pipeline.append({
-                "$match": {
-                    "$or": [{"role_name": {"$regex": re.escape(search_term), "$options": "i"}}]
-                }
-            })
-        count_pipeline.append({"$count": "total"})
-        
-        total_result = await db.roles.aggregate(count_pipeline).to_list(length=1)
-        total_count = total_result[0]["total"] if total_result else 0
-        
+        filtered_data = facet_result.get("data", [])
+        total_count = facet_result.get("total", [{}])[0].get("count", 0) if facet_result.get("total") else 0
+
+
+    
         # Convert to response format
         response_data = []
         for item in filtered_data:
             response_data.append({
                 "id": str(item["_id"]),
-                "role_name": item["role_name"],
+                "role_name": item.get("role_name", ""),
                 "status": item.get("status", Status.ACTIVE.value)
             })
-        
         return GridDataResponse(
             data=response_data,
             total=total_count,
@@ -178,6 +175,7 @@ async def get_form_dependency(
                 "permissions": await get_permissions(menu_id, db)
             })
             response_data.extend(await get_submenus(menu_id, db))
+            print(response_data,"response_data")
         else:
             # Get all menu structure
             pipeline = [
@@ -186,7 +184,6 @@ async def get_form_dependency(
                 {"$sort": {"_id": 1}},
             ]
             response_data = await db.menu_master.aggregate(pipeline).to_list(length=None)
-        print(response_data,"response_data")
         return response_data
         
     except Exception as e:
@@ -223,6 +220,8 @@ async def create_role(
         role.updated_by = current_user.get("sub")
         
         # Insert into database
+        print(role.model_dump(exclude={"id"}),"role")
+        print(role.model_dump(),"role")
         result = await db.roles.insert_one(role.model_dump(exclude={"id"}))
         
         logger.info(f"Role created: {role_data.role_name} by {current_user.get('sub')}")

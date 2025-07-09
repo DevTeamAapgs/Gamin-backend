@@ -97,8 +97,8 @@ class RoleResponse(BaseModel):
     role_name: str = Field(..., description="Role name")
     permissions: Dict[str, Dict[str, bool]] = Field(default={}, description="Permissions dictionary")
     status: int = Field(..., description="Status")
-    created_on: datetime = Field(..., description="Created date")
-    updated_on: datetime = Field(..., description="Updated date")
+    # created_on: datetime = Field(..., description="Created date")
+    # updated_on: datetime = Field(..., description="Updated date")
     
     model_config = {
         "json_encoders": {ObjectId: str}
@@ -114,6 +114,11 @@ class GridDataResponse(BaseModel):
     total: int = Field(..., description="Total count")
     page: int = Field(..., description="Current page")
     per_page: int = Field(..., description="Items per page") 
+
+
+
+
+
 
     
 # class GetFormDependency(BaseModel):
@@ -138,10 +143,39 @@ class MenuItemModel(BaseModel):
 
 
 # Then define the main MenuItem model
-class MenusubmenuAndPermission(BaseModel):
-    id: str = Field(alias="_id")
+class PermissionSubmenuModel(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    can_show: Optional[int] = None
+    router_url: Optional[str] = None
+    menu_icon: Optional[str] = None
+    active_urls: Optional[List[str]] = None
+    mobile_access: Optional[int] = None
+    menu_model: Optional[int] = None
     menu_name: str
-    permissions: List[MenuItemModel]
+    menu_value: str
+    menu_type: int
+    fk_parent_id: PyObjectId
+    menu_order: int
+    description: Optional[str] = None
+    permissions:Optional[List["PermissionSubmenuModel"]] = []  # Could be List['PermissionModel'] if recursive
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={ObjectId: str},
+        populate_by_name=True
+    )
+PermissionSubmenuModel.model_rebuild()
+
+class MenusubmenuAndPermission(BaseModel):
+    id: str = Field(alias="id")
+    menu_name: str
+    can_show: Optional[int] = None
+    router_url: Optional[str] = None
+    menu_icon: Optional[str] = None
+    active_urls: Optional[List[str]] = None
+    mobile_access: Optional[int] = None
+    menu_model: Optional[int] = None
+    permissions: List[PermissionSubmenuModel]
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True,

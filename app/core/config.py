@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     salt: str = os.getenv("SALT", "your-salt-for-encryption")
     
     # Cookie Configuration
-    cookie_domain: str = os.getenv("COOKIE_DOMAIN", "localhost")
+    cookie_domain: str = os.getenv("COOKIE_DOMAIN", "192.168.1.108")
     cookie_secure: bool = os.getenv("COOKIE_SECURE", "False").lower() == "true"
     cookie_httponly: bool = os.getenv("COOKIE_HTTPONLY", "True").lower() == "true"
     cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax")
@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
     celery_result_backend: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/2")
     
+
+    environment: str = os.getenv("ENV", "development")
+
     @property
     def ALLOWED_ORIGINS(self):
         return self.allowed_origins

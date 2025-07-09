@@ -17,6 +17,7 @@ class CookieAuth:
     
     def get_token_from_cookies(self, request: Request) -> Optional[str]:
         """Extract access token from cookies"""
+      
         return request.cookies.get(self.access_token_cookie_name)
     
     def get_refresh_token_from_cookies(self, request: Request) -> Optional[str]:
@@ -33,6 +34,7 @@ class CookieAuth:
         """Get token from cookies first, then fallback to header"""
         # Try cookies first
         token = self.get_token_from_cookies(request)
+        # print(token,"token")
         if token:
             return token
         

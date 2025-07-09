@@ -87,7 +87,12 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins= settings.ALLOWED_ORIGINS,
+    # allow_origins= settings.ALLOWED_ORIGINS,
+    allow_origins= [
+ "http://localhost:4200",     
+        "http://192.168.1.148:4200"
+
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -134,7 +139,7 @@ def custom_openapi():
 
     openapi_schema["security"] = [
         {"cookieAuth": []},
-        {"bearerAuth": []}
+        # {"bearerAuth": []}
     ]
 
     # Add security requirements to protected endpoints

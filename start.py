@@ -7,7 +7,8 @@ import os
 import sys
 import uvicorn
 from pathlib import Path
-
+from dotenv import load_dotenv
+load_dotenv()
 def main():
     """Main startup function."""
     print("🎮 Starting Gaming Platform Backend...")
