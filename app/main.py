@@ -31,14 +31,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        
-#         response.headers["Content-Security-Policy"] = (
-#     "default-src 'self'; "
-#     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/ https://fastapi.tiangolo.com; "
-#     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/; "
-#     "img-src 'self' data: https://fastapi.tiangolo.com; "
-#     "font-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/;"
-# )
 
         return response
 
@@ -81,24 +73,23 @@ app = FastAPI(
     }
 )
 
-# Add security headers middleware first
-app.add_middleware(SecurityHeadersMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins= settings.ALLOWED_ORIGINS,
-    allow_origins= [
- "http://localhost:4200",     
-        "http://192.168.1.148:4200"
-
-],
+     allow_origins=[
+        "http://localhost:4200",
+        "https://*.ngrok-free.app",  # Wildcard for all ngrok URLs
+        "https://*.ngrok.io"        # Additional ngrok domains
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],
+    max_age=600 
 )
 
-# Add custom middleware
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(SecurityLoggingMiddleware)
 app.add_middleware(

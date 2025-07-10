@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     
     
     # Server Configuration
-    host: str = os.getenv("HOST", "0.0.0.0")
-    port: int = int(os.getenv("PORT", "8000"))
+    host: str = os.getenv("HOST", "localhost")
+    port: int = int(os.getenv("PORT", "3001"))
     debug: bool = os.getenv("DEBUG", "False").lower() == "true"
     
     # CORS Configuration

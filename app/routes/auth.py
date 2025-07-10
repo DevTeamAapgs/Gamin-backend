@@ -230,6 +230,8 @@ async def get_current_player(current_user: dict = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="Player not found")
         
         player = Player(**player_doc)
+
+        print("player",player)
         
         return PlayerResponse(
             id=str(player.id),
