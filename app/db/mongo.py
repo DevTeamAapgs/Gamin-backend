@@ -1,12 +1,13 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.core.config import settings
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 class Database:
-    client: AsyncIOMotorClient = None
-    database = None
+    client: Optional[AsyncIOMotorClient] = None
+    database: Optional[AsyncIOMotorDatabase] = None
 
 db = Database()
 
@@ -33,8 +34,11 @@ async def close_mongo_connection():
 async def create_indexes():
     """Create database indexes for optimal performance."""
     try:
+        if db.database is None:
+            raise Exception("Database not connected")
+            
         # Player indexes
-        await db.database.players.create_index("wallet_address", unique=True)
+        #await db.database.players.create_index("wallet_address", unique=True)
         await db.database.players.create_index("username", unique=True)
         await db.database.players.create_index("created_at")
         
@@ -65,6 +69,6 @@ async def create_indexes():
         logger.error(f"Failed to create indexes: {e}")
         raise e
 
-def get_database():
+def get_database() :
     """Get database instance."""
     return db.database 

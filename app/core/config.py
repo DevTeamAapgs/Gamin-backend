@@ -1,58 +1,75 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
 import os
-from dotenv import load_dotenv
+from typing import List
+from pydantic_settings import BaseSettings
+from pydantic import validator
 
-load_dotenv()
 class Settings(BaseSettings):
     # Database Configuration
-    mongodb_url: str = os.getenv("MONGODB_URL", "mongodb://192.168.1.54:27017/gaming_platform")
-    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")
-    mongodb_db_name: str = os.getenv("MONGODB_DB_NAME", "gaming_platform")
+    mongodb_url: str = "mongodb://192.168.1.54:27017/gaming_platform"
+    redis_url: str = "redis://localhost:6379"
+    mongodb_db_name: str = "gaming_platform"
     
     # Security Configuration
-    secret_key: str = os.getenv("SECRET_KEY", "your-super-secret-key-change-in-production")
-    algorithm: str = os.getenv("ALGORITHM", "HS256")
-    access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-    refresh_token_expire_days: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
-    aes_key: str = os.getenv("AES_KEY", "your-32-byte-aes-key-for-encryption")
-    salt: str = os.getenv("SALT", "your-salt-for-encryption")
+    secret_key: str = "your-super-secret-key-change-in-production"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+    aes_key: str = "your-32-byte-aes-key-for-encryption"
+    salt: str = "your-salt-for-encryption"
+    
+    # Email Configuration
+    mail_username: str = "smtp@mailtrap.io"
+    mail_password: str = "95beec87707cc59f2f2dc215a6691234"
+    mail_from: str = "noreply@keepwisely.com"
+    mail_port: int = 587
+    mail_server: str = "smtp.mailtrap.io"
+    mail_tls: bool = True
+    mail_ssl: bool = False
     
     # Cookie Configuration
-    cookie_domain: str = os.getenv("COOKIE_DOMAIN", "localhost")
-    cookie_secure: bool = os.getenv("COOKIE_SECURE", "False").lower() == "true"
-    cookie_httponly: bool = os.getenv("COOKIE_HTTPONLY", "True").lower() == "true"
-    cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax")
-    access_token_cookie_name: str = os.getenv("ACCESS_TOKEN_COOKIE_NAME", "access_token")
-    refresh_token_cookie_name: str = os.getenv("REFRESH_TOKEN_COOKIE_NAME", "refresh_token")
+    cookie_domain: str = "localhost"
+    cookie_secure: bool = False
+    cookie_httponly: bool = True
+    cookie_samesite: str = "lax"
+    access_token_cookie_name: str = "access_token"
+    refresh_token_cookie_name: str = "refresh_token"
     
     # 1inch API Configuration
-    oneinch_api_url: str = os.getenv("ONEINCH_API_URL", "https://api.1inch.dev")
-    oneinch_api_key: str = os.getenv("ONEINCH_API_KEY", "")
+    oneinch_api_url: str = "https://api.1inch.dev"
+    oneinch_api_key: str = "your-1inch-api-key"
     
     # Game Configuration
-    default_game_timer: int = int(os.getenv("DEFAULT_GAME_TIMER", "60"))
-    default_entry_cost: int = int(os.getenv("DEFAULT_ENTRY_COST", "100"))
-    default_reward_multiplier: float = float(os.getenv("DEFAULT_REWARD_MULTIPLIER", "1.5"))
+    default_game_timer: int = 60
+    default_entry_cost: int = 100
+    default_reward_multiplier: float = 1.5
     
+    # Admin Configuration
+    admin_username: str = "admin"
+    admin_password: str = "admin-secure-password"
     
     # Server Configuration
-    host: str = os.getenv("HOST", "0.0.0.0")
-    port: int = int(os.getenv("PORT", "8000"))
-    debug: bool = os.getenv("DEBUG", "False").lower() == "true"
+    host: str = "0.0.0.0"
+    port: int = 8000
+    debug: bool = False
     
     # CORS Configuration
-    allowed_origins: list = os.getenv("ALLOWED_ORIGINS", "*").split(",") if os.getenv("ALLOWED_ORIGINS") else ["*"]
+    allowed_origins: List[str] = ["*"]
+    
+    @validator('allowed_origins', pre=True)
+    def parse_allowed_origins(cls, v):
+        if isinstance(v, str):
+            if v == "*":
+                return ["*"]
+            return [origin.strip() for origin in v.split(",")]
+        return v
     
     # Celery Configuration
-    celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
-    celery_result_backend: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/2")
-    
-    @property
-    def ALLOWED_ORIGINS(self):
-        return self.allowed_origins
+    celery_broker_url: str = "redis://localhost:6379/1"
+    celery_result_backend: str = "redis://localhost:6379/2"
     
     class Config:
         env_file = ".env"
+        case_sensitive = False
 
-settings = Settings() 
+# Global settings instance
+settings = Settings()

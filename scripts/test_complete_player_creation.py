@@ -13,7 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from app.schemas.player import PlayerCreate
 from app.utils.helpers import generate_unique_wallet_address
-from app.common.prefix import generate_prefix
+from app.utils.prefix import generate_prefix
 
 def test_player_create_schema():
     """Test the PlayerCreate schema with role name"""

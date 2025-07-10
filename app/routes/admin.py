@@ -14,7 +14,7 @@ import logging
 from typing import Optional, List
 from passlib.context import CryptContext
 from bson import ObjectId
-from app.common.schemas import TokenResponse, AdminResponse
+from app.models.schemas import TokenResponse, AdminResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["admin"])
@@ -204,7 +204,7 @@ async def admin_refresh_token(request: Request, response: Response):
         db = get_database()
         admin_doc = await db.players.find_one({
             "_id": ObjectId(admin_id),
-            "is_admin": True,
+            "playertype": 1,
             "is_active": True
         })
         
@@ -215,13 +215,13 @@ async def admin_refresh_token(request: Request, response: Response):
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "is_admin": True
+            "playertype": admin_doc.get("playertype", 1)
         })
         
         new_refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "is_admin": True
+            "playertype": admin_doc.get("playertype", 1)
         })
         
         logger.info(f"Admin token refreshed: {admin_doc['username']}")

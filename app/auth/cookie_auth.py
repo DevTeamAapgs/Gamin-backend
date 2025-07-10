@@ -137,9 +137,28 @@ async def verify_admin(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Check if user is admin (this would need to be implemented based on your user model)
-    # For now, we'll assume the payload contains admin information
-    if payload.get("playertype") not in [PlayerType.SUPERADMIN, PlayerType.ADMINEMPLOYEE]:
+    # Get user ID from payload and fetch full user document
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Fetch user from database and check current playertype (not from token)
+    db = get_database()
+    user_doc = await db.players.find_one({"_id": ObjectId(user_id)})
+    
+    if not user_doc:
+        raise HTTPException(
+            status_code=401,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Check if user is admin (playertype=1 for admin employees)
+    if user_doc.get("playertype") != 1:
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    return payload 
+    return user_doc 

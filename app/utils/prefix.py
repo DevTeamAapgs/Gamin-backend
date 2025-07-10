@@ -2,10 +2,11 @@ from app.db.mongo import get_database
 from bson import ObjectId
 from datetime import datetime
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-async def generate_prefix(module: str, value_count: int) -> str:
+async def generate_prefix(module: str, value_count: int = 4) -> str:
     """
     Generate a unique prefix based on module and value count.
     
@@ -18,6 +19,8 @@ async def generate_prefix(module: str, value_count: int) -> str:
     """
     try:
         db = get_database()
+        if db is None:
+            raise Exception("Database connection not available")
         prefix_collection = db.prefix
         
         # Find the prefix record for the given module
@@ -60,7 +63,7 @@ async def generate_prefix(module: str, value_count: int) -> str:
         logger.error(f"Error generating prefix for module '{module}': {str(e)}")
         raise
 
-async def get_prefix_info(module: str) -> dict:
+async def get_prefix_info(module: str) -> Optional[dict]:
     """
     Get prefix information for a module without updating the value.
     
@@ -72,6 +75,8 @@ async def get_prefix_info(module: str) -> dict:
     """
     try:
         db = get_database()
+        if db is None:
+            raise Exception("Database connection not available")
         prefix_collection = db.prefix
         
         prefix_record = await prefix_collection.find_one({"module": module})

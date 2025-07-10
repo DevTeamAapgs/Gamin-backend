@@ -10,7 +10,7 @@ import os
 # Add the app directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from app.common.prefix import generate_prefix, get_prefix_info
+from app.utils.prefix import generate_prefix, get_prefix_info
 
 async def test_prefix_generation():
     """Test the prefix generation functionality"""

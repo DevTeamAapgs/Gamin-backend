@@ -5,15 +5,27 @@ from app.models.player import Player
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import get_current_user, get_current_user_optional
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
+from app.utils.upload_handler import profile_pic_handler
+from app.utils.email_utils import email_manager
 from app.db.mongo import get_database
 from app.core.config import settings
 from datetime import datetime
 import logging
-from app.common.schemas import TokenResponse
+from app.models.schemas import TokenResponse, ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
+from pathlib import Path
+from bson import ObjectId
+from passlib.context import CryptContext
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
 
 @router.post("/register", response_model=TokenResponse)
 async def register_player(player_data: PlayerCreate, request: Request, response: Response):
@@ -208,6 +220,14 @@ async def logout(request: Request, response: Response):
         # Clear cookies
         clear_auth_cookies(response)
         
+        # Clean up temp files for this user
+        if token:
+            payload = token_manager.verify_token(token)
+            if payload:
+                player_id = payload.get("sub")
+                if player_id:
+                    await cleanup_user_temp_files_on_logout(player_id)
+        
         return {"message": "Successfully logged out"}
         
     except HTTPException:
@@ -251,3 +271,198 @@ async def get_current_player(current_user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error(f"Get current player failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to get player information") 
+
+# Forgot Password Routes
+
+@router.post("/forgot-password")
+async def forgot_password(request_data: ForgotPasswordRequest):
+    """Send OTP to email for password reset."""
+    try:
+        db = get_database()
+        
+        # Check if email exists in database
+        user_doc = await db.players.find_one({"email": request_data.email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="Email not found in our records")
+        
+        # Generate OTP
+        otp = email_manager.generate_otp()
+        otp_expiry = email_manager.get_otp_expiry_time()
+        
+        # Encrypt OTP and expiry time
+        encrypted_otp = email_manager.encrypt_data(otp)
+        encrypted_expiry = email_manager.encrypt_data(otp_expiry.isoformat())
+        
+        # Update user with encrypted OTP and expiry time
+        await db.players.update_one(
+            {"_id": user_doc["_id"]},
+            {
+                "$set": {
+                    "otp": encrypted_otp,
+                    "otp_expire_time": encrypted_expiry,
+                    "updated_on": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Send OTP email
+        username = user_doc.get("username", "User")
+        email_sent = await email_manager.send_otp_email(request_data.email, username, otp)
+        
+        if not email_sent:
+            raise HTTPException(status_code=500, detail="Failed to send OTP email")
+        
+        logger.info(f"OTP sent to {request_data.email} for user {user_doc['_id']}")
+        
+        return {"message": "OTP sent successfully to your email"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Forgot password failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process forgot password request")
+
+@router.post("/verify-otp")
+async def verify_otp(request_data: VerifyOTPRequest):
+    """Verify OTP and check if it's not expired."""
+    try:
+        db = get_database()
+        
+        # Find user by email
+        user_doc = await db.players.find_one({"email": request_data.email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="Email not found in our records")
+        
+        # Check if OTP exists
+        if not user_doc.get("otp") or not user_doc.get("otp_expire_time"):
+            raise HTTPException(status_code=400, detail="No OTP found. Please request a new OTP")
+        
+        # Decrypt OTP and expiry time
+        try:
+            stored_otp = email_manager.decrypt_data(user_doc["otp"])
+            stored_expiry_str = email_manager.decrypt_data(user_doc["otp_expire_time"])
+            stored_expiry = datetime.fromisoformat(stored_expiry_str)
+        except Exception as e:
+            logger.error(f"Failed to decrypt OTP data: {e}")
+            raise HTTPException(status_code=500, detail="Invalid OTP data")
+        
+        # Check if OTP is expired
+        if datetime.utcnow() > stored_expiry:
+            # Clear OTP data
+            await db.players.update_one(
+                {"_id": user_doc["_id"]},
+                {
+                    "$unset": {"otp": "", "otp_expire_time": ""},
+                    "$set": {"updated_on": datetime.utcnow()}
+                }
+            )
+            raise HTTPException(status_code=400, detail="OTP expired")
+        
+        # Verify OTP
+        if request_data.otp != stored_otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+        
+        # Clear OTP data after successful verification
+        await db.players.update_one(
+            {"_id": user_doc["_id"]},
+            {
+                "$unset": {"otp": "", "otp_expire_time": ""},
+                "$set": {"updated_on": datetime.utcnow()}
+            }
+        )
+        
+        logger.info(f"OTP verified successfully for {request_data.email}")
+        
+        return {"message": "OTP verified successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OTP verification failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to verify OTP")
+
+@router.post("/reset-password")
+async def reset_password(request_data: ResetPasswordRequest):
+    """Reset password after OTP verification."""
+    try:
+        db = get_database()
+        
+        # Find user by email
+        user_doc = await db.players.find_one({"email": request_data.email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="Email not found in our records")
+        
+        # Hash the new password
+        hashed_password = get_password_hash(request_data.new_password)
+        
+        # Update password in database
+        result = await db.players.update_one(
+            {"_id": user_doc["_id"]},
+            {
+                "$set": {
+                    "password_hash": hashed_password,
+                    "updated_on": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update password")
+        
+        logger.info(f"Password reset successfully for {request_data.email}")
+        
+        return {"message": "Password updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password reset failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset password")
+
+@router.get("/debug/email-config")
+async def debug_email_config():
+    """Debug endpoint to check email configuration (remove in production)"""
+    try:
+        from app.utils.email_utils import email_manager
+        return {
+            "username": email_manager.username,
+            "server": email_manager.server,
+            "port": email_manager.port,
+            "tls": email_manager.tls,
+            "ssl": email_manager.ssl,
+            "from_email": email_manager.from_email,
+            "password_set": "***" if email_manager.password else "NOT SET"
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@router.get("/debug/otp/{email}")
+async def debug_get_otp(email: str):
+    """Debug endpoint to get OTP from database (remove in production)"""
+    try:
+        db = get_database()
+        user_doc = await db.players.find_one({"email": email})
+        if not user_doc:
+            return {"error": "Email not found"}
+        
+        if not user_doc.get("otp") or not user_doc.get("otp_expire_time"):
+            return {"error": "No OTP found for this email"}
+        
+        # Decrypt OTP and expiry time
+        try:
+            stored_otp = email_manager.decrypt_data(user_doc["otp"])
+            stored_expiry_str = email_manager.decrypt_data(user_doc["otp_expire_time"])
+            stored_expiry = datetime.fromisoformat(stored_expiry_str)
+            
+            return {
+                "email": email,
+                "otp": stored_otp,
+                "expiry": stored_expiry.isoformat(),
+                "is_expired": datetime.utcnow() > stored_expiry
+            }
+        except Exception as e:
+            return {"error": f"Failed to decrypt OTP: {str(e)}"}
+            
+    except Exception as e:
+        return {"error": str(e)}
+

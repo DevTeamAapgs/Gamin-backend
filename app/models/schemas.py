@@ -42,6 +42,11 @@ class AdminResponse(BaseModel):
     email: str = Field(..., description="Email address")
     is_admin: bool = Field(..., description="Whether user is an admin")
     is_active: bool = Field(..., description="Whether user is active")
+    status: Optional[int] = Field(None, description="User status (1=active, 0=inactive)")
+    fk_role_id: Optional[str] = Field(None, description="Role ID")
+    player_prefix: Optional[str] = Field(None, description="Player prefix")
+    wallet_address: Optional[str] = Field(None, description="Wallet address")
+    profile_photo: Optional[Dict[str, str | float]] = Field(None, description="Profile photo information")
     created_at: datetime = Field(..., description="Account creation timestamp")
     last_login: Optional[datetime] = Field(None, description="Last login timestamp")
 
@@ -55,4 +60,48 @@ class SearchFilterRequest(BaseModel):
     page: int = Field(1, ge=1, description="Page number")
     limit: int = Field(10, ge=1, le=100, description="Items per page")
     sort_by: Optional[str] = Field(None, description="Sort field")
-    sort_order: Optional[str] = Field("asc", description="Sort order (asc/desc)") 
+    sort_order: Optional[str] = Field("asc", description="Sort order (asc/desc)")
+
+class AdminCreateRequest(BaseModel):
+    """Request model for creating admin users"""
+    username: str = Field(..., min_length=3, max_length=50, description="Username")
+    email: str = Field(..., description="Email address")
+    password: str = Field(..., min_length=6, description="Password (minimum 6 characters)")
+    fk_role_id: str = Field(..., description="Role ID")
+    profile_photo: Optional[Dict[str, str | float]] = Field(None, description="Profile photo information with uploadfilename, uploadurl, and filesize_kb")
+
+class AdminGetRequest(BaseModel):
+    """Request model for getting admin by ID"""
+    admin_id: str = Field(..., description="Admin ID to retrieve")
+
+class AdminUpdateRequest(BaseModel):
+    """Request model for updating admin users"""
+    id: str = Field(..., description="Admin ID to update")
+    username: Optional[str] = Field(None, min_length=3, max_length=50, description="Username")
+    email: Optional[str] = Field(None, description="Email address")
+    password: Optional[str] = Field(None, min_length=6, description="Password (minimum 6 characters)")
+    fk_role_id: Optional[str] = Field(None, description="Role ID")
+    profile_photo: Optional[Dict[str, str | float]] = Field(None, description="Profile photo information")
+
+class PlayerStatusUpdate(BaseModel):
+    """Request model for status updates"""
+    status: int = Field(..., ge=0, le=1, description="Status: 1=active, 0=inactive")
+
+class AdminStatusUpdateRequest(BaseModel):
+    """Request model for admin status updates"""
+    id: str = Field(..., description="Admin ID")
+    status: int = Field(..., ge=0, le=1, description="Status: 1=active, 0=inactive")
+
+class ForgotPasswordRequest(BaseModel):
+    """Request model for forgot password - send OTP"""
+    email: str = Field(..., description="Email address")
+
+class VerifyOTPRequest(BaseModel):
+    """Request model for OTP verification"""
+    email: str = Field(..., description="Email address")
+    otp: str = Field(..., description="6-digit OTP")
+
+class ResetPasswordRequest(BaseModel):
+    """Request model for password reset"""
+    email: str = Field(..., description="Email address")
+    new_password: str = Field(..., min_length=6, description="New password (minimum 6 characters)") 

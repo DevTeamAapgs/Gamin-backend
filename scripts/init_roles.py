@@ -33,51 +33,96 @@ async def init_roles():
             await db.create_collection("roles")
             logger.info("Created roles collection")
         
-        # Create index for roles collection
-        await db.roles.create_index("role", unique=True)
+        # Drop existing indexes to avoid conflicts
+        try:
+            await db.roles.drop_indexes()
+            logger.info("Dropped existing indexes")
+        except Exception as e:
+            logger.info(f"No existing indexes to drop: {e}")
+        
+        # Clean up existing data with old structure
+        old_roles = await db.roles.find({"role": {"$exists": True}}).to_list(length=10)
+        if old_roles:
+            logger.info(f"Found {len(old_roles)} old role documents, removing them")
+            await db.roles.delete_many({"role": {"$exists": True}})
+        
+        # Create new index for roles collection
+        await db.roles.create_index("role_name", unique=True)
         logger.info("Created index for roles collection")
         
-        # Insert default roles if they don't exist
-        existing_roles = await db.roles.count_documents({})
-        if existing_roles == 0:
-            default_roles = [
+        # Check existing roles
+        all_roles = await db.roles.find({}).to_list(length=10)
+        logger.info(f"Total roles in database: {len(all_roles)}")
+        
+        # List existing roles
+        for role in all_roles:
+            role_name = role.get('role_name', 'Unknown')
+            description = role.get('description', 'No description')
+            logger.info(f"  - {role_name}: {description}")
+        
+        # Define specific roles for the system
+        specific_roles = [
                 {
-                    "role": "admin",
+                "role_name": "admin",
                     "description": "Administrator with full access",
                     "permissions": ["read", "write", "delete", "admin"],
-                    "created_at": datetime.utcnow()
+                "created_at": datetime.utcnow(),
+                "status": 1,
+                "dels": 0
+            },
+            {
+                "role_name": "manager",
+                "description": "Manager with limited admin access",
+                "permissions": ["read", "write", "moderate"],
+                "created_at": datetime.utcnow(),
+                "status": 1,
+                "dels": 0
                 },
                 {
-                    "role": "player",
+                "role_name": "player",
                     "description": "Regular player with game access",
                     "permissions": ["read", "play"],
-                    "created_at": datetime.utcnow()
+                "created_at": datetime.utcnow(),
+                "status": 1,
+                "dels": 0
                 },
                 {
-                    "role": "moderator",
-                    "description": "Moderator with limited admin access",
-                    "permissions": ["read", "write", "moderate"],
-                    "created_at": datetime.utcnow()
-                }
-            ]
-            
-            await db.roles.insert_many(default_roles)
-            logger.info("Inserted default roles: admin, player, moderator")
-        else:
-            # Check if specific roles exist
-            roles_to_check = ["admin", "player", "moderator"]
+                "role_name": "superadmin",
+                "description": "Super Administrator with highest privileges",
+                "permissions": ["read", "write", "delete", "admin", "super"],
+                "created_at": datetime.utcnow(),
+                "status": 1,
+                "dels": 0
+            }
+        ]
+        
+        # Check if specific roles exist and create missing ones
+        roles_to_check = ["admin", "manager", "player", "superadmin"]
+        missing_roles = []
+        
             for role_name in roles_to_check:
-                role_exists = await db.roles.find_one({"role": role_name})
+            role_exists = await db.roles.find_one({"role_name": role_name})
                 if not role_exists:
+                missing_roles.append(role_name)
                     logger.warning(f"Role '{role_name}' not found in database")
                 else:
                     logger.info(f"Role '{role_name}' exists")
         
-        # List all existing roles
-        all_roles = await db.roles.find({}).to_list(length=10)
-        logger.info(f"Total roles in database: {len(all_roles)}")
-        for role in all_roles:
-            logger.info(f"  - {role['role']}: {role.get('description', 'No description')}")
+        # Insert missing roles
+        if missing_roles:
+            roles_to_insert = [role for role in specific_roles if role["role_name"] in missing_roles]
+            
+            if roles_to_insert:
+                await db.roles.insert_many(roles_to_insert)
+                logger.info(f"Inserted missing roles: {[role['role_name'] for role in roles_to_insert]}")
+        
+        # Final check
+        final_roles = await db.roles.find({}).to_list(length=10)
+        logger.info(f"Final roles in database: {len(final_roles)}")
+        for role in final_roles:
+            role_name = role.get('role_name', 'Unknown')
+            description = role.get('description', 'No description')
+            logger.info(f"  - {role_name}: {description}")
         
         logger.info("Roles initialization completed successfully!")
         

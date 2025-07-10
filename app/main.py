@@ -13,7 +13,7 @@ from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
 
 # Import routes
-from app.routes import auth, player, game, admin, socket, roles
+from app.routes import auth, player, game, admin, socket, roles, admincrud, common
 
 # Configure logging
 logging.basicConfig(
@@ -142,7 +142,7 @@ def custom_openapi():
         for method in openapi_schema["paths"][path]:
             if method.lower() in ["get", "post", "put", "delete", "patch"]:
                 endpoint = openapi_schema["paths"][path][method.lower()]
-                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin","Roles"] for tag in endpoint["tags"]):
+                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin", "Roles", "Admin CRUD", "Common"] for tag in endpoint["tags"]):
                     # if "security" not in endpoint:
                     endpoint["security"] = [
                         {"cookieAuth": []},
@@ -210,6 +210,8 @@ app.include_router(game.router, prefix="/api/v1/game", tags=["Game"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])
 app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
+app.include_router(admincrud.router, prefix="/api/v1/admincrud", tags=["Admin CRUD"])
+app.include_router(common.router, prefix="/api/v1", tags=["Common"])
 
 # Root endpoint
 @app.get("/")
