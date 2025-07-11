@@ -97,8 +97,8 @@ class RoleResponse(BaseModel):
     role_name: str = Field(..., description="Role name")
     permissions: Dict[str, Dict[str, bool]] = Field(default={}, description="Permissions dictionary")
     status: int = Field(..., description="Status")
-    # created_on: datetime = Field(..., description="Created date")
-    # updated_on: datetime = Field(..., description="Updated date")
+    created_on: datetime = Field(..., description="Created date")
+    updated_on: datetime = Field(..., description="Updated date")
     
     model_config = {
         "json_encoders": {ObjectId: str}
@@ -109,8 +109,13 @@ class GridDataRequest(BaseModel):
     count: int = Field(..., description="Items per page")
     searchString: str = Field(default="", description="Search string")
 
+class GridDataItem(BaseModel):
+    id: str = Field(..., description="Role ID")
+    role_name: str = Field(..., description="Role name")
+    status: int = Field(..., description="Status")
+
 class GridDataResponse(BaseModel):
-    data: List[RoleResponse] = Field(..., description="Role data")
+    data: List[GridDataItem] = Field(..., description="Role data")
     total: int = Field(..., description="Total count")
     page: int = Field(..., description="Current page")
     per_page: int = Field(..., description="Items per page") 

@@ -1,26 +1,30 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse
 from app.models.player import Player
 from app.auth.token_manager import token_manager
+from app.auth.cookie_auth import get_current_user
 from app.services.analytics import analytics_service
 from app.db.mongo import get_database
 import logging
+from typing import Callable, Optional, Annotated
+from datetime import datetime
+
+from app.utils.crypto_dependencies import decrypt_body
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
 
 @router.get("/profile", response_model=PlayerResponse)
-async def get_player_profile(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_player_profile(request: Request, current_user: dict = Depends(get_current_user)):
     """Get player profile information."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        # Get player from current user
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
-        player_id = payload.get("sub")
         db = get_database()
         
         # Get player
@@ -30,7 +34,7 @@ async def get_player_profile(credentials: HTTPAuthorizationCredentials = Depends
         
         player = Player(**player_doc)
         
-        return PlayerResponse(
+        response = PlayerResponse(
             id=str(player.id),
             wallet_address=player.wallet_address,
             username=player.username,
@@ -43,6 +47,7 @@ async def get_player_profile(credentials: HTTPAuthorizationCredentials = Depends
             created_at=player.created_at,
             last_login=player.last_login
         )
+        return response
         
     except HTTPException:
         raise
@@ -52,17 +57,18 @@ async def get_player_profile(credentials: HTTPAuthorizationCredentials = Depends
 
 @router.put("/profile", response_model=PlayerResponse)
 async def update_player_profile(
-    player_data: PlayerUpdate,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request,
+    body_schema: Annotated[PlayerUpdate, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")],
+    player_data: PlayerUpdate = Depends(decrypt_body(PlayerUpdate)),
+    current_user: dict = Depends(get_current_user)
 ):
     """Update player profile information."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        # Get player from current user
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
-        player_id = payload.get("sub")
         db = get_database()
         
         # Check if username is already taken
@@ -89,7 +95,7 @@ async def update_player_profile(
         player_doc = await db.players.find_one({"_id": player_id})
         player = Player(**player_doc)
         
-        return PlayerResponse(
+        response = PlayerResponse(
             id=str(player.id),
             wallet_address=player.wallet_address,
             username=player.username,
@@ -102,6 +108,7 @@ async def update_player_profile(
             created_at=player.created_at,
             last_login=player.last_login
         )
+        return response
         
     except HTTPException:
         raise
@@ -110,15 +117,14 @@ async def update_player_profile(
         raise HTTPException(status_code=500, detail="Failed to update player profile")
 
 @router.get("/balance", response_model=PlayerBalance)
-async def get_player_balance(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_player_balance(request: Request, current_user: dict = Depends(get_current_user)):
     """Get player token balance and transaction summary."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        # Get player from current user
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
-        player_id = payload.get("sub")
         db = get_database()
         
         # Get player
@@ -128,11 +134,12 @@ async def get_player_balance(credentials: HTTPAuthorizationCredentials = Depends
         
         player = Player(**player_doc)
         
-        return PlayerBalance(
+        response = PlayerBalance(
             token_balance=player.token_balance,
             total_earned=player.total_tokens_earned,
             total_spent=player.total_tokens_spent
         )
+        return response
         
     except HTTPException:
         raise
@@ -141,15 +148,13 @@ async def get_player_balance(credentials: HTTPAuthorizationCredentials = Depends
         raise HTTPException(status_code=500, detail="Failed to get player balance")
 
 @router.get("/stats", response_model=PlayerStats)
-async def get_player_stats(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_player_stats(request: Request, current_user: dict = Depends(get_current_user)):
     """Get player gaming statistics."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
-        
-        player_id = payload.get("sub")
+        # Get player from current user
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
         # Get analytics data
         analytics = await analytics_service.get_player_analytics(player_id)
@@ -167,7 +172,7 @@ async def get_player_stats(credentials: HTTPAuthorizationCredentials = Depends(s
         total_spent = analytics.get("total_tokens_spent", 0)
         net_profit = total_earned - total_spent
         
-        return PlayerStats(
+        response = PlayerStats(
             total_games_played=total_games,
             games_won=completed_games,
             games_lost=games_lost,
@@ -177,6 +182,7 @@ async def get_player_stats(credentials: HTTPAuthorizationCredentials = Depends(s
             total_tokens_spent=total_spent,
             net_profit=net_profit
         )
+        return response
         
     except HTTPException:
         raise
@@ -186,18 +192,18 @@ async def get_player_stats(credentials: HTTPAuthorizationCredentials = Depends(s
 
 @router.get("/transactions", response_model=list[TransactionResponse])
 async def get_player_transactions(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    current_user: dict = Depends(get_current_user),
     limit: int = 20,
-    transaction_type: str = None
+    transaction_type: Optional[str] = None,
 ):
     """Get player transaction history."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        # Get player from current user
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
-        player_id = payload.get("sub")
         db = get_database()
         
         # Build query
@@ -208,7 +214,7 @@ async def get_player_transactions(
         # Get transactions
         transactions = await db.transactions.find(query).sort("created_at", -1).limit(limit).to_list(length=limit)
         
-        return [
+        response_data = [
             TransactionResponse(
                 id=str(tx["_id"]),
                 player_id=str(tx["player_id"]),
@@ -223,6 +229,7 @@ async def get_player_transactions(
             )
             for tx in transactions
         ]
+        return response_data
         
     except HTTPException:
         raise
@@ -231,15 +238,13 @@ async def get_player_transactions(
         raise HTTPException(status_code=500, detail="Failed to get player transactions")
 
 @router.get("/analytics")
-async def get_player_analytics(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_player_analytics(request: Request, current_user: dict = Depends(get_current_user)):
     """Get detailed player analytics."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
-        
-        player_id = payload.get("sub")
+        # Get player from current user
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
         # Get analytics data
         analytics = await analytics_service.get_player_analytics(player_id)

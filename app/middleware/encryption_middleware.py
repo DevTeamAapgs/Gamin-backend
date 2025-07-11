@@ -86,9 +86,9 @@ class ResponseEncryptionMiddleware(BaseHTTPMiddleware):
         normal_headers = {}
 
         for k, v in raw_headers:
-            if k.lower() == b'set-cookie':
-                set_cookie_headers.append(v)
-            else:
-                normal_headers[k.decode()] = v.decode()
+               if k.lower() == b'set-cookie':
+                    set_cookie_headers.append(v)
+               elif k.lower() != b'content-length':  
+                    normal_headers[k.decode()] =  v.decode()
 
         return normal_headers, set_cookie_headers

@@ -1,6 +1,9 @@
 import json
 from fastapi import Request, HTTPException, Depends, Query
 from typing import Any, Type, TypeVar, Callable
+
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from app.utils.crypto import AESCipher
 
 T = TypeVar("T")
@@ -32,35 +35,33 @@ def get_crypto_service() -> AESCipher:
     
 #     return dependency
 
-def decrypt_body(model: Type[T]) -> Callable:
-    print(model,"model")
+
+def decrypt_body(model: Type[T]) -> Callable[..., T]:
     async def dependency(
         request: Request,
         crypto: AESCipher = Depends(get_crypto_service)
     ) -> T:
         try:
             body = await request.json()
-            print(body,"body")
-            # Skip encryption if requested (e.g. Swagger UI)
             if request.headers.get("x-plaintext", "").lower() == "true":
                 return model(**body)
 
-            decrypted:dict[str, Any] = {
+            decrypted: dict[str, Any] = {
                 k: crypto.decrypt(v) if isinstance(v, str) else v
                 for k, v in body.items()
             }
-            print(decrypted,type(decrypted),"decrypeted")
-            if 'data' in decrypted and decrypted['data']:
-                decrypted = json.loads(decrypted['data'])
+
+            # If decrypted contains a nested 'data' stringified JSON
+            if isinstance(decrypted.get("data"), str):
+                decrypted = json.loads(decrypted["data"])
 
             return model(**decrypted)
 
         except Exception as e:
-            print(e,"error")
+            print("Decryption failed:", e)
             raise HTTPException(status_code=400, detail=f"Decryption failed: {str(e)}")
-    
-    return dependency
 
+    return dependency
 
 def decrypt_query(query: str = Query(...), crypto: AESCipher = Depends(get_crypto_service)):
     try:
@@ -71,7 +72,7 @@ def decrypt_query(query: str = Query(...), crypto: AESCipher = Depends(get_crypt
 
 def decrypt_data_param(
     data: str = Query(...),
-    request: Request = Depends(),
+    request: Request = None,
     crypto: AESCipher = Depends(get_crypto_service)
 ) -> dict:
     if request and request.headers.get("x-plaintext", "").lower() == "true":
@@ -81,3 +82,35 @@ def decrypt_data_param(
         return eval(decrypted_json)  
     except Exception:
         raise HTTPException(status_code=400, detail="Failed to decrypt query payload")
+
+
+
+def get_encryptor_response(crypto: AESCipher = Depends(get_crypto_service)) -> Callable:
+    def encrypt_response(data: Any, request: Request | None = None) -> JSONResponse:
+        """Encrypt response data and return JSONResponse"""
+        try:
+            # Skip encryption if x-plaintext header is set to "true" (for Swagger UI)
+            if request and request.headers.get("x-plaintext", "").lower() == "true":
+                return data
+            
+            # Handle different data types for encryption
+            if hasattr(data, 'model_dump'):
+                # Pydantic model
+                json_str = json.dumps(data.model_dump(), default=str)
+            elif isinstance(data, dict):
+                # Dictionary
+                json_str = json.dumps(data, default=str)
+            elif isinstance(data, (list, tuple)):
+                # List or tuple
+                json_str = json.dumps(data, default=str)
+            else:
+                # Other types - convert to string
+                json_str = json.dumps(data, default=str)
+            
+            encrypted = crypto.encrypt(json_str)
+            return JSONResponse(content={"data": encrypted})
+        except Exception as e:
+            # Fallback to plain response if encryption fails
+            return JSONResponse(content=data)
+    
+    return encrypt_response       
