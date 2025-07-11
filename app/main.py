@@ -10,10 +10,12 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
+from app.middleware.encryption_middleware import ResponseEncryptionMiddleware
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
 
 # Import routes
 from app.routes import auth, player, game, admin, socket, roles
+from app.utils.crypto import AESCipher
 
 # Configure logging
 logging.basicConfig(
@@ -79,8 +81,8 @@ app.add_middleware(
     CORSMiddleware,
      allow_origins=[
         "http://localhost:4200",
-        "https://*.ngrok-free.app",  # Wildcard for all ngrok URLs
-        "https://*.ngrok.io"        # Additional ngrok domains
+        "https://*.ngrok-free.app", 
+        "https://*.ngrok.io"        
     ],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods
@@ -98,6 +100,8 @@ app.add_middleware(
     enable_db_logging=True
 )
 
+app.add_middleware(ResponseEncryptionMiddleware, crypto=AESCipher(mode="CBC"))
+
 # # Custom OpenAPI configuration for cookie authentication
 def custom_openapi():
     if app.openapi_schema:
@@ -110,6 +114,18 @@ def custom_openapi():
         routes=app.routes,
     )
     
+
+      # Add custom header parameter for Swagger (X-Plaintext)
+    openapi_schema["components"]["parameters"] = {
+        "XPlaintext": {
+            "name": "X-Plaintext",
+            "in": "header",
+            "required": False,
+            "schema": {"type": "string", "default": "true"},
+            "description": "Tells the server to skip AES encryption/decryption (used by Swagger)"
+        }
+    }
+
     # Add cookie authentication scheme
     openapi_schema["components"]["securitySchemes"] = {
         "cookieAuth": {
@@ -130,7 +146,7 @@ def custom_openapi():
 
     openapi_schema["security"] = [
         {"cookieAuth": []},
-        # {"bearerAuth": []}
+        {"bearerAuth": []}
     ]
 
     # Add security requirements to protected endpoints
@@ -139,6 +155,9 @@ def custom_openapi():
             if method.lower() in ["get", "post", "put", "delete", "patch"]:
                 endpoint = openapi_schema["paths"][path][method.lower()]
                 if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin","Roles"] for tag in endpoint["tags"]):
+                    if "parameters" not in endpoint:
+                        endpoint["parameters"] = []
+                        endpoint["parameters"].append({"$ref": "#/components/parameters/XPlaintext"})
                     # if "security" not in endpoint:
                     endpoint["security"] = [
                         {"cookieAuth": []},
@@ -148,41 +167,8 @@ def custom_openapi():
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
-# def custom_openapi():
-#     print("🔧 Generating OpenAPI Schema...")
-#     if app.openapi_schema:
-#         return app.openapi_schema
-
-#     openapi_schema = get_openapi(
-#         title=app.title,
-#         version=app.version,
-#         description=app.description,
-#         routes=app.routes,
-#     )
-
-#     openapi_schema["components"]["securitySchemes"] = {
-#         "cookieAuth": {
-#             "type": "apiKey",
-#             "in": "cookie",
-#             "name": "access_token"
-#         },
-#         "bearerAuth": {
-#             "type": "http",
-#             "scheme": "bearer",
-#             "bearerFormat": "JWT"
-#         }
-#     }
-
-#     openapi_schema["security"] = [
-#         {"cookieAuth": []},
-#         {"bearerAuth": []}
-#     ]
-
-#     app.openapi_schema = openapi_schema
-#     return app.openapi_schema
 
 
-app.openapi = custom_openapi
 
 
 # Global exception handler
@@ -207,6 +193,9 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])
 app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
 
+
+
+
 # Root endpoint
 @app.get("/")
 async def root():
@@ -216,6 +205,9 @@ async def root():
         "docs": "/docs",
         "health": "/health"
     }
+
+app.openapi = custom_openapi
+
 
 if __name__ == "__main__":
     uvicorn.run(

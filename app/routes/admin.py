@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.schemas.game import GameLevelUpdate, LeaderboardResponse
 from app.schemas.player import AdminLogin, AdminCreate, AdminResponse, TokenResponse
 from app.auth.token_manager import token_manager
@@ -14,6 +15,8 @@ import logging
 from typing import Optional, List
 from passlib.context import CryptContext
 from bson import ObjectId
+
+from app.utils.crypto_dependencies import decrypt_body
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["admin"])
@@ -33,13 +36,10 @@ def get_password_hash(password: str) -> str:
 
 # Remove the old verify_admin function as we're importing it from cookie_auth
 
-@router.post("/login", response_model=TokenResponse)
-async def admin_login(admin_data: AdminLogin, response: Response):
+@router.post("/login", response_model=TokenResponse )
+async def admin_login( response: Response ,admin_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Admin login with username and password."""
     try:
-        print(admin_data.username,"username")
-        db = get_database()
-        
         # Find admin by username
         admin_doc = await db.players.find_one({
             "email": admin_data.username,
@@ -49,7 +49,6 @@ async def admin_login(admin_data: AdminLogin, response: Response):
        
         if not admin_doc:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        print(get_password_hash(admin_data.password),"pwd")
         # Verify password
         if not verify_password(admin_data.password, admin_doc.get("password_hash", "")):
             print("invalid credentials")

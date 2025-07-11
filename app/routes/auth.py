@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.schemas.player import PlayerCreate, PlayerLogin, TokenResponse, PlayerResponse
 from app.models.player import Player
 from app.auth.token_manager import token_manager
@@ -9,6 +10,8 @@ from app.db.mongo import get_database
 from app.core.config import settings
 from datetime import datetime
 import logging
+
+from app.utils.crypto_dependencies import decrypt_body
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -72,10 +75,9 @@ async def register_player(player_data: PlayerCreate, request: Request, response:
         raise HTTPException(status_code=500, detail="Registration failed")
 
 @router.post("/login", response_model=TokenResponse)
-async def login_player(player_data: PlayerLogin, request: Request, response: Response):
+async def login_player(  request: Request, response: Response,player_data: PlayerLogin = Depends(decrypt_body), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Login existing player."""
     try:
-        db = get_database()
         
         # Find player by wallet address
         player_doc = await db.players.find_one({"wallet_address": player_data.wallet_address})
