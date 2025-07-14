@@ -5,9 +5,11 @@ Gaming Platform Backend Startup Script
 
 import os
 import sys
+from threading import local
 import uvicorn
 from pathlib import Path
-
+from dotenv import load_dotenv
+load_dotenv()
 def main():
     """Main startup function."""
     print("🎮 Starting Gaming Platform Backend...")
@@ -19,7 +21,7 @@ def main():
         print("   Copy env.example to .env and configure your settings.")
     
     # Set default configuration
-    host = os.getenv("HOST", "0.0.0.0")
+    host = "localhost"
     port = int(os.getenv("PORT", "8000"))
     debug = os.getenv("DEBUG", "True").lower() == "true"
     

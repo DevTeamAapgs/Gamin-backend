@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     mail_ssl: bool = os.getenv("MAIL_SSL", "false").lower() == "true"
     
     # Cookie Configuration
-    cookie_domain: str = os.getenv("COOKIE_DOMAIN", "localhost")
+    cookie_domain: str = os.getenv("COOKIE_DOMAIN", "192.168.1.108")
     cookie_secure: bool = os.getenv("COOKIE_SECURE", "False").lower() == "true"
     cookie_httponly: bool = os.getenv("COOKIE_HTTPONLY", "True").lower() == "true"
     cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax")
@@ -46,17 +46,24 @@ class Settings(BaseSettings):
     default_reward_multiplier: float = float(os.getenv("DEFAULT_REWARD_MULTIPLIER", "1.5"))
 
     # Server Configuration
-    host: str = os.getenv("HOST", "0.0.0.0")
-    port: int = int(os.getenv("PORT", "8000"))
-    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
-
+    host: str = os.getenv("HOST", "localhost")
+    port: int = int(os.getenv("PORT", "3001"))
+    debug: bool = os.getenv("DEBUG", "False").lower() == "true"
+    
     # CORS Configuration
     allowed_origins: List[str] = ["*"]
 
     # Celery Configuration
     celery_broker_url: str = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
     celery_result_backend: str = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/2")
+    
 
+    environment: str = os.getenv("ENV", "development")
+
+    @property
+    def ALLOWED_ORIGINS(self):
+        return self.allowed_origins
+    
     class Config:
         env_file = ".env"
 

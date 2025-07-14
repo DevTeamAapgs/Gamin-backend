@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, Response, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable, Annotated
 from bson import ObjectId
 import re
 from datetime import datetime
@@ -9,8 +9,8 @@ import json
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.models.roles import (
-    MenuItemModel, MenusubmenuAndPermission, RolesModel, RoleCreate, RoleUpdate, RolePatch, RoleResponse,
-    GridDataRequest, GridDataResponse, PermissionDetails
+    MenuItemModel, MenusubmenuAndPermission, PermissionSubmenuModel,  RolesModel, RoleCreate, RoleUpdate, RolePatch, RoleResponse,
+    GridDataRequest, GridDataResponse, GridDataItem, PermissionDetails
 )
 from app.models.menu import (
     MenuModel, MenuItem, MenuGroup, MenuQuery, PermissionSchema,
@@ -19,6 +19,8 @@ from app.models.menu import (
 from app.auth.cookie_auth import verify_admin, get_current_user
 from app.db.mongo import get_database
 from app.core.enums import Status, DeletionStatus
+from app.utils.crypto_dependencies import decrypt_data_param
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ security = HTTPBearer()
 SORT_BY_DESC = -1
 EMPLOYEE_SPECIAL_PERMISSION = ["dashboard", "profile", "settings"]  # Example special permissions
 
-async def get_submenus(menu_id: str, db) -> List[Dict]:
+async def get_submenus(menu_id: str, db) -> List[PermissionSubmenuModel]:
     """Get submenus for a given menu ID"""
     pipeline = [
         {
@@ -55,7 +57,9 @@ async def get_submenus(menu_id: str, db) -> List[Dict]:
             }
         },
     ]
-    return await db.menu_master.aggregate(pipeline).to_list(length=None)
+    result = await db.menu_master.aggregate(pipeline).to_list()
+    
+    return   [PermissionSubmenuModel(**doc) for doc in result]
 
 async def get_permissions(menu_id: str, db) -> List[Dict]:
     """Get permissions for a given menu ID"""
@@ -87,22 +91,31 @@ async def get_permissions(menu_id: str, db) -> List[Dict]:
 
 @router.get("/grid-data", response_model=GridDataResponse, tags=["Roles"])
 async def get_grid_data(
-    data: str = Query(..., description="JSON string with page, count, searchString"),
+    request: Request,
+    params: dict = Depends(decrypt_data_param),
     db: AsyncIOMotorDatabase = Depends(get_database),
     current_user: dict = Depends(verify_admin)
 ):
     """Get roles data for grid display with pagination and search"""
     try:
         
-        # Parse the data parameter
-        grid_data = json.loads(data)
-        search_term = grid_data.get("searchString", "")
-        page = int(grid_data.get("page", 1))
-        per_page = int(grid_data.get("count", 10))
+        # Extract parameters from encrypted data
+        page = params.get("page", 1)
+        count = params.get("count", 10)
+        searchString = params.get("searchString", "")
         
-        # Build aggregation pipeline
+        # Validate parameters
+        if page < 1:
+            page = 1
+        if count < 1 or count > 100:
+            count = 10
+            
+        # Use the extracted parameters
+        search_term = searchString
+        per_page = count
+        
+        # Build aggregation pipeline with facet for data and count
         pipeline = []
-        
         
         # Add search filter if search term provided
         if search_term:
@@ -112,48 +125,45 @@ async def get_grid_data(
                 }
             })
         
-        # Sort by updated_on descending
-        pipeline.append({"$sort": {"updated_on": SORT_BY_DESC}})
-        
-        # Project only needed fields
-        pipeline.append({"$project": {"_id": 1, "role_name": 1, "status": 1}})
-        
-        # Add pagination
-        skip = (page - 1) * per_page
-        pipeline.append({"$skip": skip})
-        pipeline.append({"$limit": per_page})
+        # Use facet to get both data and count in single query
+        pipeline.append({
+            "$facet": {
+                "data": [
+                    {"$sort": {"updated_on": SORT_BY_DESC}},
+                    {"$project": {"_id": 1, "role_name": 1, "status": 1}},
+                    {"$skip": (page - 1) * per_page},
+                    {"$limit": per_page}
+                ],
+                "total": [
+                    {"$count": "count"}
+                ]
+            }
+        })
         
         # Execute aggregation
-        filtered_data = await db.roles.aggregate(pipeline).to_list(length=per_page)
+        result = await db.roles.aggregate(pipeline).to_list(length=1)
+        facet_result = result[0] if result else {"data": [], "total": []}
         
-        # Calculate total count
-        count_pipeline = []
-        if search_term:
-            count_pipeline.append({
-                "$match": {
-                    "$or": [{"role_name": {"$regex": re.escape(search_term), "$options": "i"}}]
-                }
-            })
-        count_pipeline.append({"$count": "total"})
-        
-        total_result = await db.roles.aggregate(count_pipeline).to_list(length=1)
-        total_count = total_result[0]["total"] if total_result else 0
-        
+        filtered_data = facet_result.get("data", [])
+        total_count = facet_result.get("total", [{}])[0].get("count", 0) if facet_result.get("total") else 0
+
+
+    
         # Convert to response format
         response_data = []
         for item in filtered_data:
-            response_data.append({
-                "id": str(item["_id"]),
-                "role_name": item["role_name"],
-                "status": item.get("status", Status.ACTIVE.value)
-            })
-        
-        return GridDataResponse(
+            response_data.append(GridDataItem(
+                id=str(item["_id"]),
+                role_name=item.get("role_name", ""),
+                status=item.get("status", Status.ACTIVE.value)
+            ))
+        response = GridDataResponse(
             data=response_data,
             total=total_count,
             page=page,
             per_page=per_page
         )
+        return response
         
     except Exception as e:
         logger.error(f"Error getting grid data: {e}")
@@ -162,6 +172,7 @@ async def get_grid_data(
 @router.get("/get-form-dependency" , response_model=List[MenuItemModel])
 @router.get("/get-form-dependency/{menu_id}",response_model=List[MenusubmenuAndPermission])
 async def get_form_dependency(
+    request: Request,
     menu_id: Optional[str] = None,
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
@@ -178,6 +189,7 @@ async def get_form_dependency(
                 "permissions": await get_permissions(menu_id, db)
             })
             response_data.extend(await get_submenus(menu_id, db))
+            print(response_data,"response_data")
         else:
             # Get all menu structure
             pipeline = [
@@ -186,7 +198,6 @@ async def get_form_dependency(
                 {"$sort": {"_id": 1}},
             ]
             response_data = await db.menu_master.aggregate(pipeline).to_list(length=None)
-        print(response_data,"response_data")
         return response_data
         
     except Exception as e:
@@ -195,6 +206,7 @@ async def get_form_dependency(
 
 @router.post("", status_code=201)
 async def create_role(
+    request: Request,
     role_data: RoleCreate,
     current_user: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
@@ -223,11 +235,14 @@ async def create_role(
         role.updated_by = current_user.get("sub")
         
         # Insert into database
+        print(role.model_dump(exclude={"id"}),"role")
+        print(role.model_dump(),"role")
         result = await db.roles.insert_one(role.model_dump(exclude={"id"}))
         
         logger.info(f"Role created: {role_data.role_name} by {current_user.get('sub')}")
         
-        return {"message": "Role created successfully", "id": str(result.inserted_id)}
+        response_data = {"message": "Role created successfully", "id": str(result.inserted_id)}
+        return response_data
         
     except HTTPException:
         raise
@@ -237,6 +252,7 @@ async def create_role(
 
 @router.put("")
 async def update_role(
+    request: Request,
     role_data: RoleUpdate,
     current_user: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
@@ -250,25 +266,38 @@ async def update_role(
         if not existing_role:
             raise HTTPException(status_code=404, detail="Role not found")
         
-        # Create role model instance
-        role = RolesModel(**existing_role)
+        # Check if new name conflicts with existing role
+        if role_data.role_name != existing_role.get("role_name"):
+            name_conflict = await db.roles.find_one({
+                "role_name": role_data.role_name,
+                "_id": {"$ne": role_id}
+            })
+            if name_conflict:
+                raise HTTPException(status_code=400, detail="Role name already exists")
         
-        # Update role data
-        role.role_name = role_data.role_name
-        role.set_permissions_from_dict(role_data.permissions)
+        # Create updated role
+        updated_role = RolesModel(
+            role_name=role_data.role_name,
+            permissions=[]
+        )
+        # Set the ID after creation
+        updated_role.id = role_id
+        updated_role.set_permissions_from_dict(role_data.permissions)
         
-        # Update audit fields using the method
-        role.update_audit_fields(updated_by=current_user.get("sub"))
+        # Set audit fields for update
+        updated_role.updated_by = current_user.get("sub")
+        updated_role.updated_on = datetime.utcnow()
         
-        # Save to database
+        # Update in database
         await db.roles.update_one(
-            {"_id": role_id}, 
-            {"$set": role.model_dump(exclude={"id"})}
+            {"_id": role_id},
+            {"$set": updated_role.model_dump(exclude={"id"})}
         )
         
         logger.info(f"Role updated: {role_data.role_name} by {current_user.get('sub')}")
         
-        return {"message": "Role updated successfully"}
+        response_data = {"message": "Role updated successfully"}
+        return response_data
         
     except HTTPException:
         raise
@@ -278,6 +307,7 @@ async def update_role(
 
 @router.patch("")
 async def patch_role(
+    request: Request,
     role_data: RolePatch,
     current_user: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
@@ -312,7 +342,8 @@ async def patch_role(
         
         logger.info(f"Role status updated: {role_data.id} by {current_user.get('sub')}")
         
-        return {"message": "Role status updated successfully"}
+        response_data = {"message": "Role status updated successfully"}
+        return response_data
         
     except HTTPException:
         raise
@@ -343,7 +374,7 @@ async def get_role(
                 nested_permissions[module_id] = {}
             nested_permissions[module_id][menu_id] = can_access
         
-        return RoleResponse(
+        response_data = RoleResponse(
             id=str(role_doc["_id"]),
             role_name=role_doc["role_name"],
             permissions=nested_permissions,
@@ -351,6 +382,7 @@ async def get_role(
             created_on=role_doc["created_on"],
             updated_on=role_doc["updated_on"]
         )
+        return response_data
         
     except HTTPException:
         raise
@@ -374,7 +406,8 @@ async def delete_role(
         
         logger.info(f"Role deleted: {role_id} by {current_user.get('sub')}")
         
-        return {"message": "Role deleted successfully"}
+        response_data = {"message": "Role deleted successfully"}
+        return response_data
         
     except HTTPException:
         raise
@@ -403,7 +436,8 @@ async def bulk_delete_roles(
         
         logger.info(f"Bulk delete roles: {len(ids_list)} roles by {current_user.get('sub')}")
         
-        return {"message": f"{result.deleted_count} roles deleted successfully"}
+        response_data = {"message": f"{result.deleted_count} roles deleted successfully"}
+        return response_data
         
     except HTTPException:
         raise

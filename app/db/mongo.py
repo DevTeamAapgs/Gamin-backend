@@ -38,7 +38,7 @@ async def create_indexes():
             raise Exception("Database not connected")
             
         # Player indexes
-        #await db.database.players.create_index("wallet_address", unique=True)
+        ## await db.database.players.create_index("wallet_address", unique=True)
         await db.database.players.create_index("username", unique=True)
         await db.database.players.create_index("created_at")
         

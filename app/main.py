@@ -11,11 +11,13 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
+from app.middleware.encryption_middleware import ResponseEncryptionMiddleware
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
 
 # Import routes
 from app.routes import auth, player, game, admin, socket, roles, admincrud, common
 
+from app.utils.crypto import AESCipher
 
 # Configure logging
 logging.basicConfig(
@@ -33,14 +35,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        
-#         response.headers["Content-Security-Policy"] = (
-#     "default-src 'self'; "
-#     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/ https://fastapi.tiangolo.com; "
-#     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/; "
-#     "img-src 'self' data: https://fastapi.tiangolo.com; "
-#     "font-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/;"
-# )
 
         return response
 
@@ -90,13 +84,19 @@ app.mount("/public", StaticFiles(directory="public"), name="public")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins= ['*'],
+     allow_origins=[
+        "http://localhost:4200",
+        "https://*.ngrok-free.app", 
+        "https://*.ngrok.io"        
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],
+    max_age=600 
 )
 
-# Add custom middleware
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(SecurityMiddleware)
 app.add_middleware(SecurityLoggingMiddleware)
 app.add_middleware(
@@ -104,6 +104,8 @@ app.add_middleware(
     exclude_paths=["/health", "/docs", "/openapi.json", "/favicon.ico"],
     enable_db_logging=True
 )
+
+app.add_middleware(ResponseEncryptionMiddleware, crypto=AESCipher(mode="CBC"))
 
 # # Custom OpenAPI configuration for cookie authentication
 def custom_openapi():
@@ -117,6 +119,18 @@ def custom_openapi():
         routes=app.routes,
     )
     
+
+      # Add custom header parameter for Swagger (X-Plaintext)
+    openapi_schema["components"]["parameters"] = {
+        "XPlaintext": {
+            "name": "X-Plaintext",
+            "in": "header",
+            "required": False,
+            "schema": {"type": "string", "default": "true"},
+            "description": "Tells the server to skip AES encryption/decryption (used by Swagger)"
+        }
+    }
+
     # Add cookie authentication scheme
     openapi_schema["components"]["securitySchemes"] = {
         "cookieAuth": {
@@ -145,7 +159,10 @@ def custom_openapi():
         for method in openapi_schema["paths"][path]:
             if method.lower() in ["get", "post", "put", "delete", "patch"]:
                 endpoint = openapi_schema["paths"][path][method.lower()]
-                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin", "Roles", "Admin CRUD", "Common"] for tag in endpoint["tags"]):
+                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin","Roles"] for tag in endpoint["tags"]):
+                    if "parameters" not in endpoint:
+                        endpoint["parameters"] = []
+                        endpoint["parameters"].append({"$ref": "#/components/parameters/XPlaintext"})
                     # if "security" not in endpoint:
                     endpoint["security"] = [
                         {"cookieAuth": []},
@@ -155,41 +172,8 @@ def custom_openapi():
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
-# def custom_openapi():
-#     print("🔧 Generating OpenAPI Schema...")
-#     if app.openapi_schema:
-#         return app.openapi_schema
-
-#     openapi_schema = get_openapi(
-#         title=app.title,
-#         version=app.version,
-#         description=app.description,
-#         routes=app.routes,
-#     )
-
-#     openapi_schema["components"]["securitySchemes"] = {
-#         "cookieAuth": {
-#             "type": "apiKey",
-#             "in": "cookie",
-#             "name": "access_token"
-#         },
-#         "bearerAuth": {
-#             "type": "http",
-#             "scheme": "bearer",
-#             "bearerFormat": "JWT"
-#         }
-#     }
-
-#     openapi_schema["security"] = [
-#         {"cookieAuth": []},
-#         {"bearerAuth": []}
-#     ]
-
-#     app.openapi_schema = openapi_schema
-#     return app.openapi_schema
 
 
-app.openapi = custom_openapi
 
 
 # Global exception handler
@@ -216,6 +200,9 @@ app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
 app.include_router(admincrud.router, prefix="/api/v1/admincrud", tags=["Admin CRUD"])
 app.include_router(common.router, prefix="/api/v1", tags=["Common"])
 
+
+
+
 # Root endpoint
 @app.get("/")
 async def root():
@@ -225,6 +212,9 @@ async def root():
         "docs": "/docs",
         "health": "/health"
     }
+
+app.openapi = custom_openapi
+
 
 if __name__ == "__main__":
     uvicorn.run(

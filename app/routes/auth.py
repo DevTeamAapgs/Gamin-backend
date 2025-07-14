@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, Response
+from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.schemas.player import PlayerCreate, PlayerLogin, PlayerResponse
 from app.models.player import Player
 from app.auth.token_manager import token_manager
@@ -11,6 +12,9 @@ from app.db.mongo import get_database
 from app.core.config import settings
 from datetime import datetime, timedelta
 import logging
+from typing import Annotated, Callable
+
+from app.utils.crypto_dependencies import decrypt_body
 from app.models.adminschemas import TokenResponse, ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
 from pathlib import Path
 from bson import ObjectId
@@ -30,7 +34,13 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 @router.post("/register", response_model=TokenResponse)
-async def register_player(player_data: PlayerCreate, request: Request, response: Response, db: AsyncIOMotorDatabase = Depends(get_database) ):
+async def register_player(
+    request: Request, 
+    response: Response, 
+    body_schema: Annotated[PlayerCreate, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")],
+    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)), 
+
+):
     """Register a new player."""
     try:
         
@@ -73,11 +83,12 @@ async def register_player(player_data: PlayerCreate, request: Request, response:
         # Set cookies
         set_auth_cookies(response, access_token, refresh_token)
         
-        return TokenResponse(
+        token_response = TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in=settings.access_token_expire_minutes * 60
         )
+        return token_response
         
     except HTTPException:
         raise
@@ -86,7 +97,7 @@ async def register_player(player_data: PlayerCreate, request: Request, response:
         raise HTTPException(status_code=500, detail="Registration failed")
 
 @router.post("/login", response_model=TokenResponse)
-async def login_player(player_data: PlayerLogin, request: Request, response: Response, db: AsyncIOMotorDatabase = Depends(get_database)):
+async def login_player(  request: Request, response: Response, body_schema: Annotated[PlayerLogin, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],player_data: PlayerLogin = Depends(decrypt_body(PlayerLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Login existing player."""
     try:
         
@@ -127,11 +138,12 @@ async def login_player(player_data: PlayerLogin, request: Request, response: Res
         # Set cookies
         set_auth_cookies(response, access_token, refresh_token)
         
-        return TokenResponse(
+        token_response = TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in=settings.access_token_expire_minutes * 60
         )
+        return token_response
         
     except HTTPException:
         raise
@@ -185,11 +197,12 @@ async def refresh_token(request: Request, response: Response, db: AsyncIOMotorDa
         # Set new cookies
         set_auth_cookies(response, access_token, new_refresh_token)
         
-        return TokenResponse(
+        token_response = TokenResponse(
             access_token=access_token,
             refresh_token=new_refresh_token,
             expires_in=settings.access_token_expire_minutes * 60
         )
+        return token_response
         
     except HTTPException:
         raise
@@ -227,7 +240,8 @@ async def logout(request: Request, response: Response, db: AsyncIOMotorDatabase 
                 if player_id:
                     await cleanup_user_temp_files_on_logout(player_id)
         
-        return {"message": "Successfully logged out"}
+        logout_response = {"message": "Successfully logged out"}
+        return logout_response
         
     except HTTPException:
         raise
@@ -236,7 +250,7 @@ async def logout(request: Request, response: Response, db: AsyncIOMotorDatabase 
         raise HTTPException(status_code=500, detail="Logout failed")
 
 @router.get("/me", response_model=PlayerResponse)
-async def get_current_player(current_user: dict = Depends(get_current_user), db: AsyncIOMotorDatabase = Depends(get_database)):
+async def get_current_player(request: Request, current_user: dict = Depends(get_current_user), db:AsyncIOMotorDatabase = Depends(get_database), db: AsyncIOMotorDatabase = Depends(get_database)):
     """Get current player information."""
     try:
         player_id = current_user.get("sub")
@@ -249,8 +263,10 @@ async def get_current_player(current_user: dict = Depends(get_current_user), db:
             raise HTTPException(status_code=404, detail="User not found")
         
         player = Player(**player_doc)
+
+        print("player",player)
         
-        return PlayerResponse(
+        response = PlayerResponse(
             id=str(player.id),
             wallet_address=player.wallet_address,
             username=player.username,
@@ -263,6 +279,7 @@ async def get_current_player(current_user: dict = Depends(get_current_user), db:
             created_at=player.created_at,
             last_login=player.last_login
         )
+        return response
         
     except HTTPException:
         raise

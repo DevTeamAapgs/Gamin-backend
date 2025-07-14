@@ -102,4 +102,7 @@ class TransactionResponse(BaseModel):
     status: str
     tx_hash: Optional[str] = None
     created_at: datetime
-    completed_at: Optional[datetime] = None 
+    completed_at: Optional[datetime] = None
+
+class BanRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500, description="Reason for banning the player") 

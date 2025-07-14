@@ -1,10 +1,16 @@
 from fastapi import Response
 from app.core.config import settings
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Literal, cast
 import logging
 
 logger = logging.getLogger(__name__)
+
+def _cast_samesite(samesite: str) -> Literal["lax", "strict", "none"]:
+    """Cast samesite string to proper literal type"""
+    if samesite in ["lax", "strict", "none"]:
+        return cast(Literal["lax", "strict", "none"], samesite)
+    return "lax"  # default fallback
 
 def set_auth_cookies(
     response: Response,
@@ -31,16 +37,29 @@ def set_auth_cookies(
     if refresh_token_expires is None:
         refresh_token_expires = settings.refresh_token_expire_days * 24 * 60 * 60
     
+    # Determine cookie settings based on environment
+    if settings.environment == "development":
+        cookie_domain = None
+        cookie_secure = True
+        samesite_value = "none"
+    else:
+        # Production environment: use settings
+        cookie_domain = settings.cookie_domain
+        cookie_secure = settings.cookie_secure
+        samesite_value = settings.cookie_samesite
+    
+    cookie_samesite = _cast_samesite(samesite_value)
+    
     # Set access token cookie
     response.set_cookie(
         key=settings.access_token_cookie_name,
         value=access_token,
         max_age=access_token_expires,
-        domain=settings.cookie_domain,
-        secure=settings.cookie_secure,
+        secure=cookie_secure,
         httponly=settings.cookie_httponly,
-        samesite=settings.cookie_samesite,
-        path="/"
+        samesite=cookie_samesite,
+        path="/",
+         domain=None,
     )
     
     # Set refresh token cookie
@@ -48,11 +67,11 @@ def set_auth_cookies(
         key=settings.refresh_token_cookie_name,
         value=refresh_token,
         max_age=refresh_token_expires,
-        domain=settings.cookie_domain,
-        secure=settings.cookie_secure,
+        secure=cookie_secure,
         httponly=settings.cookie_httponly,
-        samesite=settings.cookie_samesite,
-        path="/"
+        samesite=cookie_samesite,
+        path="/",
+         domain=None
     )
     
     logger.info("Authentication cookies set successfully")
@@ -66,17 +85,20 @@ def clear_auth_cookies(response: Response) -> Response:
         response: FastAPI Response object
     """
     
+    # Determine domain based on environment
+    cookie_domain = None if settings.environment == "development" else settings.cookie_domain
+    
     # Clear access token cookie
     response.delete_cookie(
         key=settings.access_token_cookie_name,
-        domain=settings.cookie_domain,
+        domain=cookie_domain,
         path="/"
     )
     
     # Clear refresh token cookie
     response.delete_cookie(
         key=settings.refresh_token_cookie_name,
-        domain=settings.cookie_domain,
+        domain=cookie_domain,
         path="/"
     )
     
@@ -109,15 +131,18 @@ def set_cookie_with_options(
         path: Cookie path
     """
     
-    # Use default settings if not provided
+    # Use default settings if not provided, with environment-specific overrides
     if domain is None:
-        domain = settings.cookie_domain
+        domain = None if settings.environment == "development" else settings.cookie_domain
     if secure is None:
-        secure = settings.cookie_secure
+        secure = False if settings.environment == "development" else settings.cookie_secure
     if httponly is None:
         httponly = settings.cookie_httponly
     if samesite is None:
-        samesite = settings.cookie_samesite
+        samesite = "none" if settings.environment == "development" else settings.cookie_samesite
+    
+    # Cast samesite to proper type
+    samesite_typed = _cast_samesite(samesite)
     
     response.set_cookie(
         key=key,
@@ -126,7 +151,7 @@ def set_cookie_with_options(
         domain=domain,
         secure=secure,
         httponly=httponly,
-        samesite=samesite,
+        samesite=samesite_typed,
         path=path
     )
     

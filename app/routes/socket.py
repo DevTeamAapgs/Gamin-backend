@@ -1,6 +1,8 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Request, Depends
 from app.auth.socket_auth import websocket_auth_manager
 from app.services.analytics import analytics_service
+
+from typing import Callable
 import logging
 import json
 
@@ -130,11 +132,12 @@ async def process_websocket_message(websocket: WebSocket, player, message: dict)
         })
 
 @router.get("/status")
-async def get_websocket_status():
+async def get_websocket_status(request: Request):
     """Get WebSocket connection status."""
     connected_players = websocket_auth_manager.get_connected_players()
     
-    return {
+    response_data = {
         "connected_players": len(connected_players),
         "active_connections": connected_players
-    } 
+    }
+    return response_data
