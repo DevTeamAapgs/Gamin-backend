@@ -17,7 +17,33 @@ class PlayerType(IntEnum):
     ADMINEMPLOYEE = 1
     PLAYER = 2
     
+ #'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'   
 class PicType(str, Enum):  # manually combine str + Enum
-    PROFILE = "profile"
-    COVER = "cover"
-    BANNER = "banner"
+    JPG = ".jpg"
+    JPEG = ".jpeg"
+    PNG = ".png"
+    GIF = ".gif"
+    BMP = ".bmp"
+    WEBP = ".webp"
+
+#'.pdf', '.doc', '.docx', '.txt', '.rtf'
+class DocType(str, Enum):  # manually combine str + Enum
+    PDF = ".pdf"
+    DOC = ".doc"
+    DOCX = ".docx"
+    TXT = ".txt"
+    RTF = ".rtf"
+
+#'.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.txt', '.zip', '.rar'
+class FileType(str, Enum):  # manually combine str + Enum
+    JPG = ".jpg"
+    JPEG = ".jpeg"
+    PNG = ".png"
+    GIF = ".gif"
+    PDF = ".pdf"
+    DOC = ".doc"
+    DOCX = ".docx"
+    TXT = ".txt"
+    ZIP = ".zip"
+    RAR = ".rar"
+

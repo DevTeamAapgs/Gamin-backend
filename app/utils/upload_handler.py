@@ -7,6 +7,8 @@ from fastapi import UploadFile, HTTPException
 from PIL import Image
 import logging
 
+from app.core.enums import PicType
+
 logger = logging.getLogger(__name__)
 
 class FileUploadHandler:
@@ -37,7 +39,7 @@ class FileUploadHandler:
         #self.uploads_dir.mkdir(parents=True, exist_ok=True)
         
         # Allowed file types (default to images)
-        self.allowed_extensions = allowed_extensions or {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
+        self.allowed_extensions = allowed_extensions or PicType
         self.max_file_size = max_file_size
 
     def validate_file(self, file: UploadFile) -> bool:
