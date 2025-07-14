@@ -6,7 +6,7 @@ from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import verify_admin, get_current_user
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
 from app.services.analytics import analytics_service
-from app.db.mongo import get_database
+from app.db.mongo import db, get_database
 from app.services.logging_service import logging_service
 from app.core.config import settings
 from datetime import datetime, timedelta
@@ -14,7 +14,8 @@ import logging
 from typing import Optional, List
 from passlib.context import CryptContext
 from bson import ObjectId
-from app.models.schemas import TokenResponse, AdminResponse
+from app.models.adminschemas import TokenResponse, AdminResponse
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["admin"])
@@ -34,16 +35,16 @@ def get_password_hash(password: str) -> str:
 # Remove the old verify_admin function as we're importing it from cookie_auth
 
 @router.post("/login", response_model=TokenResponse)
-async def admin_login(admin_data: AdminLogin, response: Response):
+async def admin_login(admin_data: AdminLogin, response: Response, db: AsyncIOMotorDatabase = Depends(get_database)):
     """Admin login with username and password."""
     try:
         print(admin_data.username,"username")
-        db = get_database()
+
         
         # Find admin by username
         admin_doc = await db.players.find_one({
             "email": admin_data.username,
-            "playertype": 1
+            "playertype": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
         
        
@@ -96,15 +97,14 @@ async def admin_login(admin_data: AdminLogin, response: Response):
         raise HTTPException(status_code=500, detail="Login failed")
 
 @router.post("/create", response_model=AdminResponse)
-async def create_admin(admin_data: AdminCreate, current_admin: dict = Depends(verify_admin)):
+async def create_admin(admin_data: AdminCreate, current_admin: dict = Depends(verify_admin), db: AsyncIOMotorDatabase = Depends(get_database)):
     """Create a new admin user (requires existing admin authentication)."""
     try:
-        db = get_database()
         
         # Check if admin already exists
         existing_admin = await db.players.find_one({
             "username": admin_data.username,
-            "playertype": 1
+            "playertype": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
         
         if existing_admin:
@@ -149,13 +149,12 @@ async def create_admin(admin_data: AdminCreate, current_admin: dict = Depends(ve
         raise HTTPException(status_code=500, detail="Failed to create admin")
 
 @router.get("/me", response_model=AdminResponse)
-async def get_current_admin(current_admin: dict = Depends(verify_admin)):
+async def get_current_admin(current_admin: dict = Depends(verify_admin), db: AsyncIOMotorDatabase = Depends(get_database)):
     """Get current admin information."""
     try:
-        db = get_database()
         admin_doc = await db.players.find_one({"_id": ObjectId(current_admin.get("sub"))})
         
-        if not admin_doc or admin_doc.get("playertype") != 1:
+        if not admin_doc or admin_doc.get("playertype") not in [0, 1]:
             raise HTTPException(status_code=404, detail="Admin not found")
         
         return AdminResponse(
@@ -175,7 +174,7 @@ async def get_current_admin(current_admin: dict = Depends(verify_admin)):
         raise HTTPException(status_code=500, detail="Failed to get admin information")
 
 @router.post("/refresh", response_model=TokenResponse)
-async def admin_refresh_token(request: Request, response: Response):
+async def admin_refresh_token(request: Request, response: Response, db: AsyncIOMotorDatabase = Depends(get_database)):
     """Refresh admin access token using refresh token from cookies."""
     try:
         # Get refresh token from cookies
@@ -191,7 +190,7 @@ async def admin_refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         
         # Check if it's an admin token
-        if payload.get("playertype") != 1:
+        if payload.get("playertype") not in [0, 1]:
             raise HTTPException(status_code=403, detail="Admin access required")
         
         admin_id = payload.get("sub")
@@ -201,10 +200,9 @@ async def admin_refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="Invalid token payload")
         
         # Get admin from database
-        db = get_database()
         admin_doc = await db.players.find_one({
             "_id": ObjectId(admin_id),
-            "playertype": 1,
+            "playertype": {"$in": [0, 1]},  # Allow both SUPERADMIN and ADMINEMPLOYEE
             "is_active": True
         })
         
@@ -215,13 +213,14 @@ async def admin_refresh_token(request: Request, response: Response):
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "playertype": admin_doc.get("playertype", 1)
+            "playertype": admin_doc.get("playertype", 0) in [0, 1],
+            "is_admin": admin_doc.get("is_admin", True)
         })
         
         new_refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "playertype": admin_doc.get("playertype", 1)
+            "playertype": admin_doc.get("playertype", 0) in [0, 1]
         })
         
         logger.info(f"Admin token refreshed: {admin_doc['username']}")
@@ -313,13 +312,13 @@ async def get_heatmap_data(
 async def update_game_level(
     level_id: str,
     level_data: GameLevelUpdate,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Update game level configuration."""
     try:
         await verify_admin(credentials)
         
-        db = get_database()
         
         # Build update data
         update_data = {}
@@ -363,13 +362,14 @@ async def get_all_players(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     limit: int = 50,
     offset: int = 0,
-    is_banned: bool = None
+    is_banned: bool = None,
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Get all players with optional filtering."""
     try:
         await verify_admin(credentials)
         
-        db = get_database()
+        
         
         # Build query
         query = {}
@@ -412,14 +412,14 @@ async def get_all_players(
 async def ban_player(
     player_id: str,
     reason: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Ban a player."""
     try:
         await verify_admin(credentials)
         
-        db = get_database()
-        
+            
         result = await db.players.update_one(
             {"_id": player_id},
             {
@@ -447,13 +447,14 @@ async def ban_player(
 @router.post("/players/{player_id}/unban")
 async def unban_player(
     player_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Unban a player."""
     try:
         await verify_admin(credentials)
         
-        db = get_database()
+        
         
         result = await db.players.update_one(
             {"_id": player_id},
@@ -483,14 +484,14 @@ async def unban_player(
 async def get_leaderboard(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     page: int = 1,
-    page_size: int = 20
+    page_size: int = 20,
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Get platform leaderboard."""
     try:
         await verify_admin(credentials)
         
-        db = get_database()
-        
+         
         # Calculate skip
         skip = (page - 1) * page_size
         
@@ -535,13 +536,14 @@ async def get_all_transactions(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     limit: int = 50,
     offset: int = 0,
-    transaction_type: str = None
+    transaction_type: str = None,
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Get all transactions."""
     try:
         await verify_admin(credentials)
         
-        db = get_database()
+
         
         # Build query
         query = {}

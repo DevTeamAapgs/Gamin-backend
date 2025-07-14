@@ -27,8 +27,7 @@ class PlayerUpdate(BaseModel):
     password: Optional[str]
     role: Optional[str]
 
-class PlayerStatusUpdate(BaseModel):
-    status: int
+
 
 class PlayerResponse(PlayerBase):
     id: str = Field(..., alias="_id")

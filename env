@@ -11,14 +11,13 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 AES_KEY=your-32-byte-aes-key-for-encryption
 SALT=your-salt-for-encryption
 
-# Email Configuration - Updated for SMTP
+# Email configuration (Mailtrap)
+MAIL_SERVER=live.smtp.mailtrap.io
+MAIL_PORT=587
 MAIL_USERNAME=smtp@mailtrap.io
 MAIL_PASSWORD=95beec87707cc59f2f2dc215a6691234
-MAIL_FROM=noreply@keepwisely.com
-MAIL_PORT=587  # Use 465 for SSL
-MAIL_SERVER=live.smtp.mailtrap.io  # e.g. smtp.gmail.com for Gmail
-MAIL_TLS=True
-MAIL_SSL=False
+MAIL_TLS=true
+MAIL_SSL=false
 
 # Cookie Configuration
 COOKIE_DOMAIN=localhost
@@ -37,17 +36,14 @@ DEFAULT_GAME_TIMER=60
 DEFAULT_ENTRY_COST=100
 DEFAULT_REWARD_MULTIPLIER=1.5
 
-# Admin Configuration
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=admin-secure-password
-
 # Server Configuration
 HOST=0.0.0.0
 PORT=8000
 DEBUG=False
 
 # CORS Configuration
-ALLOWED_ORIGINS=*
+ALLOWED_ORIGINS=["*"]
+
 
 # Celery Configuration
 CELERY_BROKER_URL=redis://localhost:6379/1

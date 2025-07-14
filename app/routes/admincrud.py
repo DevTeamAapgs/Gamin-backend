@@ -4,7 +4,7 @@ from typing import List, Optional, Dict, Any, Union
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db.mongo import get_database
 from app.auth.cookie_auth import verify_admin
-from app.models.schemas import AdminResponse, PaginationResponse, ListResponse, AdminCreateRequest, AdminUpdateRequest, PlayerStatusUpdate, AdminStatusUpdateRequest, AdminGetRequest
+from app.models.adminschemas import AdminResponse, AdminStatusUpdateRequest, PaginationResponse, ListResponse, AdminCreateRequest, AdminUpdateRequest, AdminGetRequest
 from app.utils.prefix import generate_prefix
 from app.utils.upload_handler import profile_pic_handler
 from passlib.context import CryptContext
@@ -37,7 +37,7 @@ async def list_admins(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     try:
-        query: Dict[str, Any] = {"playertype": 1}
+        query: Dict[str, Any] = {"playertype": {"$in": [0, 1]}}  # Allow both SUPERADMIN and ADMINEMPLOYEE
 
         if search_string:
             matching_roles = await db.roles.find({
@@ -59,7 +59,7 @@ async def list_admins(
         
         if role:
             if role.lower() in ["admin", "manager"]:
-                query["playertype"] = 1
+                query["playertype"] = {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
             elif role.lower() == "superadmin":
                 query["playertype"] = 0
             elif role.lower() == "player":
@@ -141,7 +141,7 @@ async def get_admin_by_id(
 ):
     """Get a specific admin by ID from URL parameter."""
     try:
-        admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": 1})
+        admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
         if not admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
@@ -224,7 +224,7 @@ async def create_user(
         
         # Generate unique fields
         wallet_address = "0x0000000000000000000000000000000000000000"  # Default wallet address
-        player_prefix = await generate_prefix("player", 4)
+        player_prefix = await generate_prefix("player", 4, db=db)
         created_at = datetime.utcnow()
         
         # Ensure current_admin has username
@@ -310,13 +310,13 @@ async def update_admin(
     """Update an admin user."""
     try:
         admin_id = admin_data.id
-        # Check if admin exists (only playertype=1)
-        existing_user = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": 1})
+        # Check if admin exists (SUPERADMIN or ADMINEMPLOYEE)
+        existing_user = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
         if not existing_user:
             # Check if user exists but has different playertype
             user_exists = await db.players.find_one({"_id": ObjectId(admin_id)})
             if user_exists:
-                logger.warning(f"User {admin_id} exists but has playertype {user_exists.get('playertype')}, not 1")
+                logger.warning(f"User {admin_id} exists but has playertype {user_exists.get('playertype')}, not admin type (0 or 1)")
                 raise HTTPException(status_code=400, detail=f"User exists but is not an admin (playertype: {user_exists.get('playertype')})")
             else:
                 logger.warning(f"User {admin_id} not found")
@@ -506,7 +506,7 @@ async def update_admin_status(
         admin_id = status_data.id
         
         # Check if admin exists
-        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": 1})
+        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
         if not existing_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
@@ -545,7 +545,7 @@ async def delete_admin(
     try:
         admin_id = admin_data.admin_id
         # Check if admin exists
-        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": 1})
+        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
         if not existing_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         

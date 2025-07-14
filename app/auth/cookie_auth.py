@@ -157,8 +157,8 @@ async def verify_admin(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Check if user is admin (playertype=1 for admin employees)
-    if user_doc.get("playertype") != 1:
+    # Check if user is admin (playertype=0 for SUPERADMIN, 1 for ADMINEMPLOYEE)
+    if user_doc.get("playertype") not in [0, 1]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
     return user_doc 

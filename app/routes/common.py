@@ -3,19 +3,22 @@ from bson import ObjectId
 from datetime import datetime
 from app.db.mongo import get_database
 from app.auth.cookie_auth import get_current_user
-from app.utils.upload_handler import profile_pic_handler
+from app.utils.upload_handler import FileUploadHandler
 import logging
 from app.models.player import Player
 from pathlib import Path
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+file_handler = FileUploadHandler()
 
 # POST /common/file-upload - Upload file
 @router.post("/common/file-upload")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: Player = Depends(get_current_user)
+    current_user: Player = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
     Upload file for the current user.
@@ -28,16 +31,15 @@ async def upload_file(
         user_id = str(current_user.id)
         
         # Check if user exists
-        db = get_database()
         existing_user = await db.players.find_one({"_id": ObjectId(user_id)})
         if not existing_user:
             raise HTTPException(status_code=404, detail="User not found")
         
         # Clean up previous temp files for this user before uploading new one
-        await cleanup_user_temp_files(user_id, existing_user)
+        #await cleanup_user_temp_files(user_id, existing_user)
         
         # Upload file to temp_uploads (includes 5MB size validation)
-        file_info = await profile_pic_handler.upload_to_temp(file, user_id)
+        file_info = await file_handler.upload_to_temp(file, user_id)
         
         logger.info(f"File uploaded to temp by user: {user_id}")
         
@@ -87,7 +89,7 @@ async def cleanup_user_temp_files(user_id: str, existing_user: dict):
             
             # Delete the orphaned file using the upload handler
             try:
-                deleted = profile_pic_handler.delete_file_by_path(file_path)
+                deleted = file_handler.delete_file_by_path(file_path)
                 if deleted:
                     deleted_files.append(file_path)
                     logger.info(f"Deleted orphaned temp file: {file_path}")
@@ -106,7 +108,8 @@ async def cleanup_user_temp_files(user_id: str, existing_user: dict):
 @router.delete("/common/file-upload")
 async def delete_file(
     file_url_path: str,
-    current_user: Player = Depends(get_current_user)
+    current_user: Player = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Delete file for the current user."""
     try:
@@ -114,7 +117,6 @@ async def delete_file(
         user_id = str(current_user.id)
         
         # Check if user exists
-        db = get_database()
         existing_user = await db.players.find_one({"_id": ObjectId(user_id)})
         if not existing_user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -144,7 +146,7 @@ async def delete_file(
             raise HTTPException(status_code=400, detail="Invalid filename")
         
         # Delete file using file path
-        deleted = profile_pic_handler.delete_file_by_path(file_url_path)
+        deleted = file_handler.delete_file_by_path(file_url_path)
         
         if deleted:
             # Check if this file is the user's profile picture

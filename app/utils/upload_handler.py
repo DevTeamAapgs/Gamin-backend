@@ -26,15 +26,15 @@ class FileUploadHandler:
             uploads_dir: Permanent upload directory
             file_type: Type of files being handled (e.g., 'profile_pic', 'document', 'generic')
         """
-        # Define paths
+        # Define pathsforgot_password_api_v1_auth_forgot_password_post
         self.temp_dir = Path(temp_dir)
         self.uploads_dir = Path(uploads_dir)
         self.public_uploads_dir = self.uploads_dir  # For compatibility
         self.file_type = file_type
         
         # Create directories if they don't exist
-        self.temp_dir.mkdir(parents=True, exist_ok=True)
-        self.uploads_dir.mkdir(parents=True, exist_ok=True)
+        #self.temp_dir.mkdir(parents=True, exist_ok=True)
+        #self.uploads_dir.mkdir(parents=True, exist_ok=True)
         
         # Allowed file types (default to images)
         self.allowed_extensions = allowed_extensions or {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
@@ -46,8 +46,8 @@ class FileUploadHandler:
         """
         try:
             # Check if filename exists
-            if not file.filename:
-                raise HTTPException(status_code=400, detail="No filename provided")
+            #if not file.filename:
+               # raise HTTPException(status_code=400, detail="No filename provided")
             
             # Check file extension
             file_extension = Path(file.filename).suffix.lower()
@@ -113,7 +113,7 @@ class FileUploadHandler:
             # Validate file size after saving
             self.validate_file_size(temp_file_path)
             
-            logger.info(f"File saved to temp: {temp_file_path}")
+            #logger.info(f"File saved to temp: {temp_file_path}")
             return temp_file_path
             
         except Exception as e:
@@ -173,7 +173,7 @@ class FileUploadHandler:
             logger.error(f"Unexpected error in upload_to_temp: {e}")
             raise HTTPException(status_code=500, detail="Upload failed")
     
-    def process_and_move_file(self, temp_file_path: Path, user_id: str, prefix: str = "file", process_image: bool = False) -> Dict[str, Any]:
+    def process_and_move_file(self, temp_file_path: Path, user_id: str, prefix: str = "file", process_image: bool = False, original_filename: str = None) -> Dict[str, Any]:
         """
         Process file and move from temp to permanent location.
         
@@ -190,9 +190,10 @@ class FileUploadHandler:
             - filesize_kb: float (file size in kilobytes, rounded to 2 decimals)
         """
         try:
-            # Generate final filename
+            # Generate final filename using the same UUID from temp
             file_extension = temp_file_path.suffix.lower()
-            final_filename = f"{prefix}_{user_id}_{uuid.uuid4().hex[:8]}{file_extension}"
+            uuid_part = temp_file_path.stem.split('_')[-1] if '_' in temp_file_path.stem else temp_file_path.stem
+            final_filename = f"{prefix}_{user_id}_{uuid_part}{file_extension}"
             final_file_path = self.uploads_dir / final_filename
             
             if process_image and file_extension in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
@@ -222,6 +223,7 @@ class FileUploadHandler:
             
             return {
                 "uploadfilename": final_filename,
+                "original_filename": original_filename,
                 "uploadurl": public_url,
                 "filesize_bytes": file_size_bytes,
                 "filesize_kb": file_size_kb
@@ -254,12 +256,12 @@ class FileUploadHandler:
         try:
             # Validate file
             self.validate_file(file)
-            
+            original_filename = file.filename
             # Save to temp
             temp_file_path = self.save_temp_file(file)
             
             # Process and move to permanent location
-            result = self.process_and_move_file(temp_file_path, user_id, prefix, process_image)
+            result = self.process_and_move_file(temp_file_path, user_id, prefix, process_image, original_filename=original_filename)
             
             logger.info(f"File uploaded successfully for user {user_id}")
             return result
@@ -270,29 +272,8 @@ class FileUploadHandler:
             logger.error(f"Unexpected error in upload_file: {e}")
             raise HTTPException(status_code=500, detail="Upload failed")
     
-    async def upload_profile_pic(self, file: UploadFile, user_id: str) -> Dict[str, Any]:
-        """
-        Convenience method for profile picture upload.
-        """
-        return await self.upload_file(file, user_id, prefix="profile", process_image=True)
     
-    def delete_file(self, file_path: str) -> bool:
-        """
-        Delete file by path from either temp_uploads or uploads directory
-        """
-        try:
-            # Convert to Path object and resolve
-            path_obj = Path(file_path)
-            if path_obj.exists():
-                path_obj.unlink()
-                logger.info(f"File deleted: {file_path}")
-                return True
-            
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error deleting file: {e}")
-            return False
+    
     
     def delete_file_by_path(self, file_path: str) -> bool:
         """

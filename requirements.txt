@@ -21,3 +21,4 @@ email-validator
 Pillow==10.4.0
 requests==2.32.3
 fastapi-mail==1.4.1
+Jinja2

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any, Dict
+from typing import Optional, List, Any, Dict, Literal
 from datetime import datetime
 from app.core.enums import PlayerType
 
@@ -83,14 +83,13 @@ class AdminUpdateRequest(BaseModel):
     fk_role_id: Optional[str] = Field(None, description="Role ID")
     profile_photo: Optional[Dict[str, str | float]] = Field(None, description="Profile photo information")
 
-class PlayerStatusUpdate(BaseModel):
-    """Request model for status updates"""
-    status: int = Field(..., ge=0, le=1, description="Status: 1=active, 0=inactive")
+class NumericStatusUpdateRequest(BaseModel):
+    """Request model for numeric status updates (0=inactive, 1=active)"""
+    status: Literal[0, 1] = Field(..., description="Status: 0=inactive, 1=active")
 
-class AdminStatusUpdateRequest(BaseModel):
+class AdminStatusUpdateRequest(NumericStatusUpdateRequest):
     """Request model for admin status updates"""
     id: str = Field(..., description="Admin ID")
-    status: int = Field(..., ge=0, le=1, description="Status: 1=active, 0=inactive")
 
 class ForgotPasswordRequest(BaseModel):
     """Request model for forgot password - send OTP"""
@@ -102,6 +101,6 @@ class VerifyOTPRequest(BaseModel):
     otp: str = Field(..., description="6-digit OTP")
 
 class ResetPasswordRequest(BaseModel):
-    """Request model for password reset"""
     email: str = Field(..., description="Email address")
-    new_password: str = Field(..., min_length=6, description="New password (minimum 6 characters)") 
+    new_password: str = Field(..., min_length=6, description="New password (minimum 6 characters)")
+    reset_token: str = Field(..., description="Password reset token") 

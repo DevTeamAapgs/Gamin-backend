@@ -1,4 +1,5 @@
-from enum import IntEnum
+from enum import IntEnum, Enum
+import string   
 
 class Status(IntEnum):
     """Status enum for active/inactive records"""
@@ -16,3 +17,7 @@ class PlayerType(IntEnum):
     ADMINEMPLOYEE = 1
     PLAYER = 2
     
+class PicType(str, Enum):  # manually combine str + Enum
+    PROFILE = "profile"
+    COVER = "cover"
+    BANNER = "banner"

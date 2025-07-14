@@ -3,22 +3,24 @@ from bson import ObjectId
 from datetime import datetime
 import logging
 from typing import Optional
+from fastapi import Depends
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.db.mongo import get_database  # adjust the path if needed
 
 logger = logging.getLogger(__name__)
 
-async def generate_prefix(module: str, value_count: int = 4) -> str:
+async def generate_prefix(module: str, value_count: int = 4, db: AsyncIOMotorDatabase = None) -> str:
     """
     Generate a unique prefix based on module and value count.
     
     Args:
         module (str): The module name (e.g., "Player", "Game", etc.)
         value_count (int): Number of digits to pad the value with
-        
+        db (AsyncIOMotorDatabase): The database object (required)
     Returns:
         str: Generated prefix (e.g., "Plr001", "Plr0001", etc.)
     """
     try:
-        db = get_database()
         if db is None:
             raise Exception("Database connection not available")
         prefix_collection = db.prefix
@@ -47,16 +49,15 @@ async def generate_prefix(module: str, value_count: int = 4) -> str:
             {
                 "$set": {
                     "key_value": new_value,
-                    "updated_on": datetime.utcnow()
+                    "updated_on": datetime.utcnow(),
+                    "updated_by": "system"
                 }
             }
         )
         
         if update_result.modified_count == 0:
-            logger.error(f"Failed to update prefix value for module: {module}")
             raise Exception(f"Failed to update prefix value for module: {module}")
         
-        logger.info(f"Generated prefix '{generated_prefix}' for module '{module}' (value: {current_value} -> {new_value})")
         return generated_prefix
         
     except Exception as e:

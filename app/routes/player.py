@@ -1,5 +1,7 @@
+import email
 from fastapi import APIRouter, HTTPException, Depends, Query, status, Body, UploadFile, File, Form, Request
-from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse, PlayerCreate, PlayerStatusUpdate, PlayerListResponse
+from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse, PlayerCreate, PlayerListResponse
+from app.models.adminschemas import NumericStatusUpdateRequest
 from app.models.player import Player
 from app.auth.cookie_auth import get_current_user
 from app.services.analytics import analytics_service
@@ -75,12 +77,14 @@ async def update_player_profile(
     try:
         db = get_database()
         player_id = str(current_user.id)
+        email = str(current_user.email)
         
         # Check if username is already taken
         if player_data.username:
             existing_player = await db.players.find_one({
                 "username": player_data.username,
-                "_id": {"$ne": ObjectId(player_id)}
+                "_id": {"$ne": ObjectId(player_id)},
+                "email": email
             })
             if existing_player:
                 raise HTTPException(status_code=400, detail="Username already taken")
