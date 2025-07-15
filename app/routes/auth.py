@@ -250,7 +250,7 @@ async def logout(request: Request, response: Response, db: AsyncIOMotorDatabase 
         raise HTTPException(status_code=500, detail="Logout failed")
 
 @router.get("/me", response_model=PlayerResponse)
-async def get_current_player(request: Request, current_user: dict = Depends(get_current_user), db:AsyncIOMotorDatabase = Depends(get_database), db: AsyncIOMotorDatabase = Depends(get_database)):
+async def get_current_player(request: Request, current_user: dict = Depends(get_current_user), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Get current player information."""
     try:
         player_id = current_user.get("sub")
@@ -290,7 +290,7 @@ async def get_current_player(request: Request, current_user: dict = Depends(get_
 # Forgot Password Routes
 
 @router.post("/forgot-password")
-async def forgot_password(request_data: ForgotPasswordRequest, db: AsyncIOMotorDatabase = Depends(get_database)):
+async def forgot_password(body_schema: Annotated[ForgotPasswordRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],request_data: ForgotPasswordRequest = Depends(decrypt_body(ForgotPasswordRequest)), db: AsyncIOMotorDatabase = Depends(get_database)):
     """Send OTP to email for password reset."""
     try:
         
@@ -336,7 +336,7 @@ async def forgot_password(request_data: ForgotPasswordRequest, db: AsyncIOMotorD
         raise HTTPException(status_code=500, detail="Failed to process forgot password request")
 
 @router.post("/verify-otp")
-async def verify_otp(request_data: VerifyOTPRequest, db: AsyncIOMotorDatabase = Depends(get_database)):
+async def verify_otp(body_schema: Annotated[VerifyOTPRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],request_data: VerifyOTPRequest= Depends(decrypt_body(VerifyOTPRequest)), db: AsyncIOMotorDatabase = Depends(get_database)):
     """Verify OTP and check if it's not expired. If valid, generate a reset token."""
     try:
         user_doc = await db.players.find_one({"email": request_data.email})
@@ -384,7 +384,7 @@ async def verify_otp(request_data: VerifyOTPRequest, db: AsyncIOMotorDatabase = 
         raise HTTPException(status_code=500, detail="Failed to verify OTP")
 
 @router.post("/reset-password")
-async def reset_password(request_data: ResetPasswordRequest, db: AsyncIOMotorDatabase = Depends(get_database)):
+async def reset_password(body_schema: Annotated[ResetPasswordRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],request_data: ResetPasswordRequest= Depends(decrypt_body(ResetPasswordRequest)), db: AsyncIOMotorDatabase = Depends(get_database)):
     """Reset password using a secure reset token."""
     try:
         user_doc = await db.players.find_one({"email": request_data.email})

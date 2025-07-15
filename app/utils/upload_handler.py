@@ -7,7 +7,7 @@ from fastapi import UploadFile, HTTPException
 from PIL import Image
 import logging
 
-from app.core.enums import PicType
+from app.core.enums import PicType,FileType,DocType
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class FileUploadHandler:
             max_file_size: Maximum file size in bytes
             temp_dir: Temporary upload directory
             uploads_dir: Permanent upload directory
-            file_type: Type of files being handled (e.g., 'profile_pic', 'document', 'generic')
+            file_type: Type oallowed_extensionsf files being handled (e.g., 'profile_pic', 'document', 'generic')
         """
         # Define pathsforgot_password_api_v1_auth_forgot_password_post
         self.temp_dir = Path(temp_dir)
@@ -39,7 +39,7 @@ class FileUploadHandler:
         #self.uploads_dir.mkdir(parents=True, exist_ok=True)
         
         # Allowed file types (default to images)
-        self.allowed_extensions = allowed_extensions or PicType
+        self.allowed_extensions = allowed_extensions or {e.value for e in PicType}
         self.max_file_size = max_file_size
 
     def validate_file(self, file: UploadFile) -> bool:
@@ -198,7 +198,7 @@ class FileUploadHandler:
             final_filename = f"{prefix}_{user_id}_{uuid_part}{file_extension}"
             final_file_path = self.uploads_dir / final_filename
             
-            if process_image and file_extension in {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
+            if process_image and file_extension in [e.value for e in FileType]:
                 # Process image (resize, optimize, etc.)
                 with Image.open(temp_file_path) as img:
                     # Convert to RGB if necessary
@@ -378,19 +378,19 @@ class FileUploadHandler:
 
 # Create global instances for different file types
 profile_pic_handler = FileUploadHandler(
-    allowed_extensions={'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'},
+    allowed_extensions={e.value for e in PicType},
     max_file_size=5 * 1024 * 1024,  # 5MB
     file_type="profile_pic"
 )
 
 document_handler = FileUploadHandler(
-    allowed_extensions={'.pdf', '.doc', '.docx', '.txt', '.rtf'},
+    allowed_extensions=DocType,
     max_file_size=10 * 1024 * 1024,  # 10MB
     file_type="document"
 )
 
 generic_file_handler = FileUploadHandler(
-    allowed_extensions={'.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx', '.txt', '.zip', '.rar'},
+    allowed_extensions= FileType,
     max_file_size=20 * 1024 * 1024,  # 20MB
     file_type="generic"
 ) 

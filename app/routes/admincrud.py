@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Body
 from bson import ObjectId
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Annotated
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.db.mongo import get_database
 from app.auth.cookie_auth import verify_admin
@@ -14,6 +14,7 @@ import traceback
 from email_validator import validate_email, EmailNotValidError
 from pathlib import Path
 import shutil
+from app.utils.crypto_dependencies import decrypt_body, decrypt_data_param
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,18 +29,24 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # 1. GET /admins - List all admins
 @router.get("/admins", response_model=ListResponse)
 async def list_admins(
-    page: int = Query(1, ge=1),
-    count: int = Query(10, ge=1, le=100),
-    search_string: Optional[str] = None,
-    status: Optional[int] = None,
-    role: Optional[str] = None,
+    params: dict = Depends(decrypt_data_param),
+    #page: int = Query(1, ge=1),
+    #count: int = Query(10, ge=1, le=100),
+    #search_string: Optional[str] = Query(None),
+    #status: Optional[int] = Query(None),
+    #role: Optional[str] = Query(None),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     try:
+        page = int(params.get("page", 1))
+        count = int(params.get("count", 10))
+        search_string = params.get("search_string")
+        status = params.get("status")
+        role = params.get("role")
         query: Dict[str, Any] = {"playertype": {"$in": [0, 1]}}  # Allow both SUPERADMIN and ADMINEMPLOYEE
 
-        if search_string:
+        if search_string :
             matching_roles = await db.roles.find({
                 "role_name": {"$regex": search_string, "$options": "i"}
             }).to_list(length=10)
@@ -135,12 +142,13 @@ async def list_admins(
 # 2.1. GET /admins/{admin_id} - Get specific admin by ID from URL parameter
 @router.get("/admins/{admin_id}", response_model=AdminResponse)
 async def get_admin_by_id(
-    admin_id: str,
+    admin_id: str = Depends(decrypt_body(AdminGetRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Get a specific admin by ID from URL parameter."""
     try:
+        #admin_id = params.get("admin_id")
         admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
         if not admin:
             raise HTTPException(status_code=404, detail="Admin not found")
@@ -173,8 +181,8 @@ async def get_admin_by_id(
 
 # 3. POST /admins - Create user
 @router.post("/admins")
-async def create_user(
-    admin_data: AdminCreateRequest,
+async def create_user(body_schema: Annotated[AdminCreateRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],
+    admin_data: AdminCreateRequest = Depends(decrypt_body(AdminCreateRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -302,8 +310,8 @@ async def create_user(
 
 # 4. PUT /admins - Update admin with ID in JSON body
 @router.put("/admins")
-async def update_admin(
-    admin_data: AdminUpdateRequest,
+async def update_admin(body_schema: Annotated[AdminUpdateRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],
+    admin_data: AdminUpdateRequest = Depends(decrypt_body(AdminUpdateRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -496,8 +504,8 @@ async def update_admin(
 
 # 5. PATCH /admins/status - Update admin status
 @router.patch("/admins/status")
-async def update_admin_status(
-    status_data: AdminStatusUpdateRequest,
+async def update_admin_status(body_schema: Annotated[AdminStatusUpdateRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],
+    status_data: AdminStatusUpdateRequest = Depends(decrypt_body(AdminStatusUpdateRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -536,8 +544,8 @@ async def update_admin_status(
 
 # 6. DELETE /admins - Delete admin by ID from JSON body
 @router.delete("/admins")
-async def delete_admin(
-    admin_data: AdminGetRequest,
+async def delete_admin(body_schema: Annotated[AdminGetRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],
+    admin_data: AdminGetRequest = Depends(decrypt_body(AdminGetRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):

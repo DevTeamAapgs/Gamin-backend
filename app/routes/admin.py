@@ -489,15 +489,13 @@ async def unban_player(
     request: Request,
     player_id: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db:AsyncIOMotorDatabase = Depends(get_database),,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db:AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Unban a player."""
     try:
         await verify_admin(request, credentials)
         
         
-        db = get_database()
         
         result = await db.players.update_one(
             {"_id": player_id},
