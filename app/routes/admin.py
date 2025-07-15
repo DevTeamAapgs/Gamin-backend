@@ -39,8 +39,8 @@ def get_password_hash(password: str) -> str:
 
 # Remove the old verify_admin function as we're importing it from cookie_auth
 
-@router.post("/login", response_model=TokenResponse )
-async def admin_login( response: Response , _: Annotated[AdminLogin, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],admin_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
+@router.post("/login", response_model=TokenResponse  )
+async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Admin login with username and password."""
     try:
         print(admin_data,"admin_data")
@@ -338,7 +338,6 @@ async def get_heatmap_data(
 async def update_game_level(
     request: Request,
     level_id: str,
-    body_schema: Annotated[GameLevelUpdate, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")],
     level_data: GameLevelUpdate = Depends(decrypt_body(GameLevelUpdate)),
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db:AsyncIOMotorDatabase = Depends(get_database),
@@ -446,7 +445,6 @@ async def get_all_players(
 async def ban_player(
     request: Request,
     player_id: str,
-    body_schema: Annotated[BanRequest, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")],
     ban_data: BanRequest = Depends(decrypt_body(BanRequest)),
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db:AsyncIOMotorDatabase = Depends(get_database),

@@ -21,7 +21,6 @@ security = HTTPBearer()
 @router.post("/start", response_model=GameResponse)
 async def start_game(
     request: Request, 
-    body_schema: Annotated[GameStart, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")],
     game_data: GameStart = Depends(decrypt_body(GameStart)), 
     current_user: dict = Depends(get_current_user)
 ):
@@ -126,7 +125,6 @@ async def start_game(
 @router.post("/submit")
 async def submit_game(
     request: Request, 
-    body_schema: Annotated[GameSubmit, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")],
     game_data: GameSubmit = Depends(decrypt_body(GameSubmit)), 
     current_user: dict = Depends(get_current_user)
 ):

@@ -181,8 +181,7 @@ async def get_admin_by_id(
 
 # 3. POST /admins - Create user
 @router.post("/admins")
-async def create_user(body_schema: Annotated[AdminCreateRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],
-    admin_data: AdminCreateRequest = Depends(decrypt_body(AdminCreateRequest)),
+async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(AdminCreateRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -310,8 +309,7 @@ async def create_user(body_schema: Annotated[AdminCreateRequest, Body(...,descri
 
 # 4. PUT /admins - Update admin with ID in JSON body
 @router.put("/admins")
-async def update_admin(body_schema: Annotated[AdminUpdateRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],
-    admin_data: AdminUpdateRequest = Depends(decrypt_body(AdminUpdateRequest)),
+async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body(AdminUpdateRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -504,7 +502,7 @@ async def update_admin(body_schema: Annotated[AdminUpdateRequest, Body(...,descr
 
 # 5. PATCH /admins/status - Update admin status
 @router.patch("/admins/status")
-async def update_admin_status(body_schema: Annotated[AdminStatusUpdateRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],
+async def update_admin_status(
     status_data: AdminStatusUpdateRequest = Depends(decrypt_body(AdminStatusUpdateRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
@@ -544,7 +542,7 @@ async def update_admin_status(body_schema: Annotated[AdminStatusUpdateRequest, B
 
 # 6. DELETE /admins - Delete admin by ID from JSON body
 @router.delete("/admins")
-async def delete_admin(body_schema: Annotated[AdminGetRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],
+async def delete_admin(
     admin_data: AdminGetRequest = Depends(decrypt_body(AdminGetRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)

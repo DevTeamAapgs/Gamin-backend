@@ -92,7 +92,6 @@ async def get_player_profile(request: Request, current_user: dict = Depends(get_
 @router.put("/profile", response_model=PlayerResponse)
 async def update_player_profile(
     request: Request,
-    body_schema: Annotated[PlayerUpdate, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")],
     player_data: PlayerUpdate = Depends(decrypt_body(PlayerUpdate)),
     current_user: dict = Depends(get_current_user)
 ):
