@@ -1,12 +1,61 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
 from pydantic import BaseModel, EmailStr, Field
+from app.core.enums import PlayerType
+
+class RoleResponse(BaseModel):
+    id: str = Field(..., alias="_id")
+    role: str
+
+class PlayerBase(BaseModel):
+    username: str
+    email: EmailStr
+    status: int
+    fk_role_id: str
+    role: Optional[str] = None  # role name (joined)
 
 class PlayerCreate(BaseModel):
-    wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
-    username: str = Field(..., min_length=3, max_length=20)
-    email: Optional[EmailStr] = None
-    device_fingerprint: Optional[str] = None
+    username: str
+    email: EmailStr
+    password: str
+    role: str
+    status: int = 1
+
+class PlayerUpdate(BaseModel):
+    username: Optional[str]
+    email: Optional[EmailStr]
+    password: Optional[str]
+    role: Optional[str]
+
+
+
+class PlayerResponse(PlayerBase):
+    id: str = Field(..., alias="_id")
+    wallet_address: Optional[str]
+    player_prefix: Optional[str]  # Add player prefix field
+    # profile_photo dict fields:
+    #   - uploadfilename: str
+    #   - uploadurl: str
+    #   - filesize_bytes: int (file size in bytes)
+    #   - filesize_kb: float (file size in kilobytes, rounded to 2 decimals)
+    profile_photo: Optional[Dict[str, str | int | float]] = None
+    playertype: Optional[int] = Field(None, description="Player type: 0=SUPERADMIN, 1=ADMINEMPLOYEE, 2=PLAYER")
+    is_verified: Optional[bool]
+    token_balance: Optional[int]
+    total_games_played: Optional[int]
+    total_tokens_earned: Optional[int]
+    created_at: Optional[datetime]
+    last_login: Optional[datetime]
+
+class PlayerFilters(BaseModel):
+    status: Optional[int] = Field(None, description="Filter by status (1=active, 0=inactive)")
+    role: Optional[str] = Field(None, description="Filter by role name")
+
+class PlayerListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    items: List[PlayerResponse]
 
 class PlayerLogin(BaseModel):
     wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
@@ -21,38 +70,6 @@ class AdminCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=20)
     password: str = Field(..., min_length=6, max_length=100)
     email: Optional[EmailStr] = None
-
-class PlayerUpdate(BaseModel):
-    username: Optional[str] = Field(None, min_length=3, max_length=20)
-    email: Optional[EmailStr] = None
-
-class PlayerResponse(BaseModel):
-    id: str
-    wallet_address: Optional[str] 
-    username: str
-    email: Optional[str] = None
-    token_balance: float
-    total_games_played: int
-    total_tokens_earned: float
-    total_tokens_spent: float
-    is_active: bool
-    created_at: datetime
-    last_login: Optional[datetime] = None
-
-class AdminResponse(BaseModel):
-    id: str
-    username: str
-    email: Optional[str] = None
-    is_admin: bool
-    is_active: bool
-    created_at: datetime
-    last_login: Optional[datetime] = None
-
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int
 
 class PlayerBalance(BaseModel):
     token_balance: float

@@ -1,22 +1,37 @@
 from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.schemas.player import PlayerCreate, PlayerLogin, TokenResponse, PlayerResponse
+from app.schemas.player import PlayerCreate, PlayerLogin, PlayerResponse
 from app.models.player import Player
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import get_current_user, get_current_user_optional
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
+from app.utils.upload_handler import profile_pic_handler
+from app.utils.email_utils import email_manager
 from app.db.mongo import get_database
 from app.core.config import settings
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Annotated, Callable
 
 from app.utils.crypto_dependencies import decrypt_body
+from app.models.adminschemas import TokenResponse, ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
+from pathlib import Path
+from bson import ObjectId
+from passlib.context import CryptContext
+from jose import jwt, JWTError
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
 
 @router.post("/register", response_model=TokenResponse)
 async def register_player(
@@ -28,7 +43,6 @@ async def register_player(
 ):
     """Register a new player."""
     try:
-        db = get_database()
         
         # Check if player already exists
         existing_player = await db.players.find_one({
@@ -138,7 +152,7 @@ async def login_player(  request: Request, response: Response, body_schema: Anno
         raise HTTPException(status_code=500, detail="Login failed")
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(request: Request, response: Response):
+async def refresh_token(request: Request, response: Response, db: AsyncIOMotorDatabase = Depends(get_database)):
     """Refresh access token using refresh token from cookies."""
     try:
         # Get refresh token from cookies
@@ -158,10 +172,9 @@ async def refresh_token(request: Request, response: Response):
             raise HTTPException(status_code=401, detail="Invalid token payload")
         
         # Get player
-        db = get_database()
         player_doc = await db.players.find_one({"_id": player_id})
         if not player_doc:
-            raise HTTPException(status_code=404, detail="Player not found")
+            raise HTTPException(status_code=404, detail="User not found")
         
         player = Player(**player_doc)
         
@@ -198,7 +211,7 @@ async def refresh_token(request: Request, response: Response):
         raise HTTPException(status_code=500, detail="Token refresh failed")
 
 @router.post("/logout")
-async def logout(request: Request, response: Response):
+async def logout(request: Request, response: Response, db: AsyncIOMotorDatabase = Depends(get_database)):
     """Logout player and invalidate session."""
     try:
         # Get token from cookies or header
@@ -218,6 +231,14 @@ async def logout(request: Request, response: Response):
         
         # Clear cookies
         clear_auth_cookies(response)
+        
+        # Clean up temp files for this user
+        if token:
+            payload = token_manager.verify_token(token)
+            if payload:
+                player_id = payload.get("sub")
+                if player_id:
+                    await cleanup_user_temp_files_on_logout(player_id)
         
         logout_response = {"message": "Successfully logged out"}
         return logout_response
@@ -239,7 +260,7 @@ async def get_current_player(request: Request, current_user: dict = Depends(get_
         # Get player
         player_doc = await db.players.find_one({"_id": player_id})
         if not player_doc:
-            raise HTTPException(status_code=404, detail="Player not found")
+            raise HTTPException(status_code=404, detail="User not found")
         
         player = Player(**player_doc)
 
@@ -265,3 +286,140 @@ async def get_current_player(request: Request, current_user: dict = Depends(get_
     except Exception as e:
         logger.error(f"Get current player failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to get player information") 
+
+# Forgot Password Routes
+
+@router.post("/forgot-password")
+async def forgot_password(body_schema: Annotated[ForgotPasswordRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],request_data: ForgotPasswordRequest = Depends(decrypt_body(ForgotPasswordRequest)), db: AsyncIOMotorDatabase = Depends(get_database)):
+    """Send OTP to email for password reset."""
+    try:
+        
+        # Check if email exists in database
+        user_doc = await db.players.find_one({"email": request_data.email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="Invalid Email Address")
+        
+        # Generate OTP
+        otp = email_manager.generate_otp()
+        otp_expiry = email_manager.get_otp_expiry()
+        
+        # Encrypt OTP and expiry time
+        encrypted_otp = email_manager.encrypt_data(otp)
+        encrypted_expiry = email_manager.encrypt_data(otp_expiry.isoformat())
+        
+        # Update user with encrypted OTP and expiry time
+        await db.players.update_one(
+            {"_id": user_doc["_id"]},
+            {
+                "$set": {
+                    "otp": encrypted_otp,
+                    "otp_expire_time": encrypted_expiry,
+                    "updated_on": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Send OTP email
+        email_sent = await email_manager.send_otp_email(request_data.email, user_doc.get("username", "User"), otp)
+        
+        if not email_sent:
+            raise HTTPException(status_code=500, detail="Failed to send OTP email")
+        
+        logger.info(f"OTP sent to {request_data.email} for user {user_doc['_id']}")
+        
+        return {"message": "OTP sent successfully to your email"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Forgot password failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process forgot password request")
+
+@router.post("/verify-otp")
+async def verify_otp(body_schema: Annotated[VerifyOTPRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],request_data: VerifyOTPRequest= Depends(decrypt_body(VerifyOTPRequest)), db: AsyncIOMotorDatabase = Depends(get_database)):
+    """Verify OTP and check if it's not expired. If valid, generate a reset token."""
+    try:
+        user_doc = await db.players.find_one({"email": request_data.email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="Invalid Email Address")
+        if not user_doc.get("otp") or not user_doc.get("otp_expire_time"):
+            raise HTTPException(status_code=400, detail=" OTP Expired. Please request a new OTP")
+        try:
+            stored_otp = email_manager.decrypt_data(user_doc["otp"])
+            stored_expiry_str = email_manager.decrypt_data(user_doc["otp_expire_time"])
+            stored_expiry = datetime.fromisoformat(stored_expiry_str)
+        except Exception as e:
+            logger.error(f"Failed to decrypt OTP data: {e}")
+            raise HTTPException(status_code=500, detail="Invalid OTP data")
+        if datetime.utcnow() > stored_expiry:
+            await db.players.update_one(
+                {"_id": user_doc["_id"]},
+                {"$unset": {"otp": "", "otp_expire_time": ""}, "$set": {"updated_on": datetime.utcnow()}}
+            )
+            raise HTTPException(status_code=400, detail="OTP expired")
+        if request_data.otp != stored_otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+        # Clear OTP data after successful verification
+        await db.players.update_one(
+            {"_id": user_doc["_id"]},
+            {"$unset": {"otp": "", "otp_expire_time": ""}, "$set": {"updated_on": datetime.utcnow()}}
+        )
+        # Generate reset token (JWT, 15 min expiry)
+        reset_token_expiry = datetime.utcnow() + timedelta(minutes=15)
+        reset_token = jwt.encode(
+            {"sub": str(user_doc["_id"]), "email": user_doc["email"], "exp": reset_token_expiry},
+            settings.secret_key,
+            algorithm=settings.algorithm
+        )
+        await db.players.update_one(
+            {"_id": user_doc["_id"]},
+            {"$set": {"reset_token": reset_token, "reset_token_expiry": reset_token_expiry}}
+        )
+        logger.info(f"OTP verified and reset token generated for {request_data.email}")
+        return {"message": "OTP verified successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OTP verification failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to verify OTP")
+
+@router.post("/reset-password")
+async def reset_password(body_schema: Annotated[ResetPasswordRequest, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],request_data: ResetPasswordRequest= Depends(decrypt_body(ResetPasswordRequest)), db: AsyncIOMotorDatabase = Depends(get_database)):
+    """Reset password using a secure reset token."""
+    try:
+        user_doc = await db.players.find_one({"email": request_data.email})
+        if not user_doc:
+            raise HTTPException(status_code=404, detail="Invalid ceredentials")
+        stored_token = user_doc.get("reset_token")
+        stored_expiry = user_doc.get("reset_token_expiry")
+        if not stored_token or not stored_expiry:
+            raise HTTPException(status_code=400, detail="Invalid ceredentials. Please request a new password reset.")
+        if stored_token != request_data.reset_token:
+            raise HTTPException(status_code=400, detail="Invalid ceredentials.")
+        try:
+            payload = jwt.decode(request_data.reset_token, settings.secret_key, algorithms=[settings.algorithm])
+            if datetime.utcnow() > stored_expiry:
+                raise HTTPException(status_code=400, detail="Reset token expired.")
+        except JWTError:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+        # Prevent using the previous password
+        if verify_password(request_data.new_password, user_doc.get("password_hash", "")):
+            raise HTTPException(status_code=400, detail="New password cannot be the same as the previous password.")
+        hashed_password = get_password_hash(request_data.new_password)
+        result = await db.players.update_one(
+            {"_id": user_doc["_id"]},
+            {"$set": {"password_hash": hashed_password, "updated_on": datetime.utcnow()}, "$unset": {"reset_token": "", "reset_token_expiry": ""}}
+        )
+        if result.modified_count == 0:
+            raise HTTPException(status_code=500, detail="Failed to update password")
+        logger.info(f"Password reset successfully for {request_data.email}")
+        return {"message": "Password updated successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password reset failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset password")
+
+
+
+

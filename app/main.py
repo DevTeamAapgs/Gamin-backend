@@ -7,14 +7,16 @@ from starlette.responses import Response
 import logging
 import uvicorn
 from contextlib import asynccontextmanager
-
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.middleware.encryption_middleware import ResponseEncryptionMiddleware
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
 
 # Import routes
-from app.routes import auth, player, game, admin, socket, roles
+from app.routes import auth, player, game, admin, socket, roles, admincrud, common
+
 from app.utils.crypto import AESCipher
 
 # Configure logging
@@ -75,6 +77,9 @@ app = FastAPI(
     }
 )
 
+# Add security headers middleware first
+app.add_middleware(SecurityHeadersMiddleware)
+app.mount("/public", StaticFiles(directory="public"), name="public")
 
 # Add CORS middleware
 app.add_middleware(
@@ -192,6 +197,8 @@ app.include_router(game.router, prefix="/api/v1/game", tags=["Game"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])
 app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
+app.include_router(admincrud.router, prefix="/api/v1/admincrud", tags=["Admin CRUD"])
+app.include_router(common.router, prefix="/api/v1", tags=["Common"])
 
 
 

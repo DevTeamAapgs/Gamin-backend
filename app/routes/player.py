@@ -1,20 +1,54 @@
-from fastapi import APIRouter, HTTPException, Depends, Request, Body
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse
+import email
+from fastapi import APIRouter, HTTPException, Depends, Request, Body, Query, status, Body, UploadFile, File, Form, Request
+from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse, PlayerCreate, PlayerListResponse
+from app.models.adminschemas import NumericStatusUpdateRequest
 from app.models.player import Player
-from app.auth.token_manager import token_manager
+from app.auth.cookie_auth import get_current_user
 from app.auth.cookie_auth import get_current_user
 from app.services.analytics import analytics_service
 from app.db.mongo import get_database
+from app.utils.helpers import generate_unique_wallet_address
+from app.utils.prefix import generate_prefix
+from app.utils.upload_handler import profile_pic_handler
 import logging
 from typing import Callable, Optional, Annotated
 from datetime import datetime
 
 from app.utils.crypto_dependencies import decrypt_body
+from typing import List, Optional
+from bson import ObjectId
+from passlib.hash import bcrypt
+from datetime import datetime
+from fastapi.responses import Response
+from pydantic import EmailStr
+from pathlib import Path
+import shutil
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-security = HTTPBearer()
+
+async def get_role_name(role_id, db):
+    role = await db.roles.find_one({"_id": ObjectId(role_id)})
+    return role["role_name"] if role else None
+
+async def get_role_id_for_mapping(role_name, db):
+    """Map role names to the 'Sample by sivas' role ID for admin, manager, player"""
+    role_name_lower = role_name.lower()
+    
+    # For admin, manager, player - map to "Sample by sivas" role
+    if role_name_lower in ["admin", "manager", "player"]:
+        sample_role = await db.roles.find_one({"role_name": "Sample by sivas"})
+        if sample_role:
+            return sample_role["_id"]
+        else:
+            raise HTTPException(status_code=400, detail="Role 'Sample by sivas' not found")
+    
+    # For other roles, look up by role_name
+    role_doc = await db.roles.find_one({"role_name": role_name})
+    if role_doc:
+        return role_doc["_id"]
+    else:
+        raise HTTPException(status_code=400, detail=f"Role '{role_name}' not found")
 
 @router.get("/profile", response_model=PlayerResponse)
 async def get_player_profile(request: Request, current_user: dict = Depends(get_current_user)):
@@ -28,7 +62,7 @@ async def get_player_profile(request: Request, current_user: dict = Depends(get_
         db = get_database()
         
         # Get player
-        player_doc = await db.players.find_one({"_id": player_id})
+        player_doc = await db.players.find_one({"_id": ObjectId(str(current_user.id))})
         if not player_doc:
             raise HTTPException(status_code=404, detail="Player not found")
         
@@ -70,12 +104,15 @@ async def update_player_profile(
             raise HTTPException(status_code=401, detail="Invalid token payload")
         
         db = get_database()
+        player_id = str(current_user.id)
+        email = str(current_user.email)
         
         # Check if username is already taken
         if player_data.username:
             existing_player = await db.players.find_one({
                 "username": player_data.username,
-                "_id": {"$ne": player_id}
+                "_id": {"$ne": ObjectId(player_id)},
+                "email": email
             })
             if existing_player:
                 raise HTTPException(status_code=400, detail="Username already taken")
@@ -89,7 +126,7 @@ async def update_player_profile(
         
         if update_data:
             update_data["updated_at"] = datetime.utcnow()
-            await db.players.update_one({"_id": player_id}, {"$set": update_data})
+            await db.players.update_one({"_id": ObjectId(player_id)}, {"$set": update_data})
         
         # Get updated player
         player_doc = await db.players.find_one({"_id": player_id})
@@ -128,7 +165,7 @@ async def get_player_balance(request: Request, current_user: dict = Depends(get_
         db = get_database()
         
         # Get player
-        player_doc = await db.players.find_one({"_id": player_id})
+        player_doc = await db.players.find_one({"_id": ObjectId(str(current_user.id))})
         if not player_doc:
             raise HTTPException(status_code=404, detail="Player not found")
         
@@ -258,4 +295,6 @@ async def get_player_analytics(request: Request, current_user: dict = Depends(ge
         raise
     except Exception as e:
         logger.error(f"Get player analytics failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get player analytics") 
+        raise HTTPException(status_code=500, detail="Failed to get player analytics")
+
+ 

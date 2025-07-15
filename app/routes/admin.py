@@ -2,12 +2,12 @@ from fastapi import APIRouter, Body, HTTPException, Depends, Query, Request, Res
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.schemas.game import GameLevelUpdate, LeaderboardResponse
-from app.schemas.player import AdminLogin, AdminCreate, AdminResponse, TokenResponse
+from app.schemas.player import AdminLogin, AdminCreate
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import verify_admin, get_current_user
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
 from app.services.analytics import analytics_service
-from app.db.mongo import get_database
+from app.db.mongo import db, get_database
 from app.services.logging_service import logging_service
 from app.core.config import settings
 from datetime import datetime, timedelta
@@ -15,6 +15,8 @@ import logging
 from typing import Annotated, Callable, Optional, List
 from passlib.context import CryptContext
 from bson import ObjectId
+from app.models.adminschemas import TokenResponse, AdminResponse
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.utils.crypto_dependencies import EncryptedBody, decrypt_body, decrypt_data_param
 from app.schemas.player import BanRequest
@@ -46,7 +48,7 @@ async def admin_login( response: Response , _: Annotated[AdminLogin, Body(...,de
         # Find admin by username
         admin_doc = await db.players.find_one({
             "email": admin_data.username,
-            "is_admin": True
+            "playertype": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
         
        
@@ -71,14 +73,14 @@ async def admin_login( response: Response , _: Annotated[AdminLogin, Body(...,de
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "is_admin": True
+            "playertype": admin_doc.get("playertype", 1)
         })
         
         # Create refresh token
         refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "is_admin": True
+            "playertype": admin_doc.get("playertype", 1)
         })
         
         logger.info(f"Admin logged in: {admin_doc['username']}")
@@ -114,7 +116,7 @@ async def create_admin(
         # Check if admin already exists
         existing_admin = await db.players.find_one({
             "username": admin_data.username,
-            "is_admin": True
+            "playertype": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
         
         if existing_admin:
@@ -126,7 +128,7 @@ async def create_admin(
             "email": admin_data.email,
             "password_hash": get_password_hash(admin_data.password),
             "wallet_address": None,  # Placeholder
-            "is_admin": True,
+            "playertype": 1,
             "is_active": True,
             "is_verified": True,
             "token_balance": 0,
@@ -146,7 +148,7 @@ async def create_admin(
             id=str(admin_user["_id"]),
             username=admin_user["username"],
             email=admin_user["email"],
-            is_admin=admin_user["is_admin"],
+            is_admin=True,  # Always True for admin users
             is_active=admin_user["is_active"],
             created_at=admin_user["created_at"],
             last_login=admin_user["last_login"]
@@ -171,14 +173,14 @@ async def get_current_admin(
         
         admin_doc = await db.players.find_one({"_id": ObjectId(current_admin.get("sub"))})
         
-        if not admin_doc or not admin_doc.get("is_admin"):
+        if not admin_doc or admin_doc.get("playertype") not in [0, 1]:
             raise HTTPException(status_code=404, detail="Admin not found")
         
         response = AdminResponse(
             id=str(admin_doc["_id"]),
             username=admin_doc["username"],
             email=admin_doc.get("email"),
-            is_admin=admin_doc["is_admin"],
+            is_admin=True,  # Always True for admin users
             is_active=admin_doc.get("is_active", True),
             created_at=admin_doc["created_at"],
             last_login=admin_doc.get("last_login")
@@ -207,7 +209,7 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         
         # Check if it's an admin token
-        if not payload.get("is_admin"):
+        if payload.get("playertype") not in [0, 1]:
             raise HTTPException(status_code=403, detail="Admin access required")
         
         admin_id = payload.get("sub")
@@ -220,7 +222,7 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
         
         admin_doc = await db.players.find_one({
             "_id": ObjectId(admin_id),
-            "is_admin": True,
+            "playertype": {"$in": [0, 1]},  # Allow both SUPERADMIN and ADMINEMPLOYEE
             "is_active": True
         })
         
@@ -231,13 +233,14 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "is_admin": True
+            "playertype": admin_doc.get("playertype", 0) in [0, 1],
+            "is_admin": admin_doc.get("is_admin", True)
         })
         
         new_refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "is_admin": True
+            "playertype": admin_doc.get("playertype", 0) in [0, 1]
         })
         
         logger.info(f"Admin token refreshed: {admin_doc['username']}")
@@ -453,6 +456,7 @@ async def ban_player(
         await verify_admin(request, credentials)
         
         
+        db = get_database()
         
         result = await db.players.update_one(
             {"_id": player_id},
@@ -484,7 +488,7 @@ async def unban_player(
     request: Request,
     player_id: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db:AsyncIOMotorDatabase = Depends(get_database),
+    db:AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Unban a player."""
     try:

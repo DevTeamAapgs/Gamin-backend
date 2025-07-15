@@ -8,6 +8,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import motor.motor_asyncio
 from app.core.config import settings
+from app.core.enums import PlayerType
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -156,7 +157,7 @@ async def init_database():
                 "email": "admin@gamingplatform.com",
                 "wallet_address": "0x0000000000000000000000000000000000000000",
                 "password_hash": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8eG",  # "admin123"
-                "is_admin": True,
+                "playertype": PlayerType.SUPERADMIN,
                 "is_verified": True,
                 "token_balance": 0,
                 "total_games_played": 0,

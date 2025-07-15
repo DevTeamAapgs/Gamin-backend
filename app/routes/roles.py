@@ -241,7 +241,7 @@ async def create_role(
         
         logger.info(f"Role created: {role_data.role_name} by {current_user.get('sub')}")
         
-        response_data = {"message": "Role created successfully", "id": str(result.inserted_id)}
+        response_data = {"message" : "Role created successfully",role_data:role_data, "id": str(result.inserted_id)}
         return response_data
         
     except HTTPException:
