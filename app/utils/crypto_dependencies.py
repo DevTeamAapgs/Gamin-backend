@@ -1,6 +1,6 @@
 import json
-from fastapi import Request, HTTPException, Depends, Query
-from typing import Any, Type, TypeVar, Callable
+from fastapi import Body, Request, HTTPException, Depends, Query
+from typing import Annotated, Any, Type, TypeVar, Callable
 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -12,6 +12,8 @@ def get_crypto_service() -> AESCipher:
     return AESCipher()
 
 
+def EncryptedBody(model: Type[T]):
+    return Annotated[model, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")], Depends(decrypt_body(model))
 
 def decrypt_body(model: Type[T]) -> Callable[..., T]:
     async def dependency(

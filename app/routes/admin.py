@@ -16,7 +16,7 @@ from typing import Annotated, Callable, Optional, List
 from passlib.context import CryptContext
 from bson import ObjectId
 
-from app.utils.crypto_dependencies import decrypt_body, decrypt_data_param
+from app.utils.crypto_dependencies import EncryptedBody, decrypt_body, decrypt_data_param
 from app.schemas.player import BanRequest
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def get_password_hash(password: str) -> str:
 # Remove the old verify_admin function as we're importing it from cookie_auth
 
 @router.post("/login", response_model=TokenResponse )
-async def admin_login( response: Response , body_schema: Annotated[AdminLogin, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],admin_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
+async def admin_login( response: Response , _: Annotated[AdminLogin, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],admin_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Admin login with username and password."""
     try:
         print(admin_data,"admin_data")
@@ -102,7 +102,7 @@ async def admin_login( response: Response , body_schema: Annotated[AdminLogin, B
 @router.post("/create", response_model=AdminResponse )
 async def create_admin(
     request: Request,
-    body_schema: Annotated[AdminCreate, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")],
+    _: Annotated[AdminCreate, Body(..., description="Encrypted payload only for docs")],
     admin_data: AdminCreate = Depends(decrypt_body(AdminCreate)),
     db:AsyncIOMotorDatabase = Depends(get_database),
     current_admin: dict = Depends(verify_admin), 
