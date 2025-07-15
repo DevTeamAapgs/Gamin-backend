@@ -104,7 +104,6 @@ async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(
 @router.post("/create", response_model=AdminResponse )
 async def create_admin(
     request: Request,
-    _: Annotated[AdminCreate, Body(..., description="Encrypted payload only for docs")],
     admin_data: AdminCreate = Depends(decrypt_body(AdminCreate)),
     db:AsyncIOMotorDatabase = Depends(get_database),
     current_admin: dict = Depends(verify_admin), 
@@ -165,25 +164,18 @@ async def create_admin(
 async def get_current_admin(
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database),
-    params = Depends(decrypt_data_param)
 ):
     """Get current admin information with optional encrypted parameters."""
     try:
-        print(params,"params")
-        
-        admin_doc = await db.players.find_one({"_id": ObjectId(current_admin.get("sub"))})
-        
-        if not admin_doc or admin_doc.get("playertype") not in [0, 1]:
-            raise HTTPException(status_code=404, detail="Admin not found")
-        
+
         response = AdminResponse(
-            id=str(admin_doc["_id"]),
-            username=admin_doc["username"],
-            email=admin_doc.get("email"),
-            is_admin=True,  # Always True for admin users
-            is_active=admin_doc.get("is_active", True),
-            created_at=admin_doc["created_at"],
-            last_login=admin_doc.get("last_login")
+            id=str(current_admin["_id"]),
+            username=current_admin["username"],
+            email=current_admin.get("email",""),
+            is_admin=True, 
+            is_active=current_admin.get("is_active", True),
+            created_at=current_admin["created_at"],
+            last_login=current_admin.get("last_login")
         )
         return response
     except HTTPException:

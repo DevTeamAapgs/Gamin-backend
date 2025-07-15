@@ -98,10 +98,11 @@ async def get_grid_data(
 ):
     """Get roles data for grid display with pagination and search"""
     try:
+        print(params,"params")
         
         # Extract parameters from encrypted data
-        page = params.get("page", 1)
-        count = params.get("count", 10)
+        page = int(params.get("page", 1))
+        count = int(params.get("count", 10))
         searchString = params.get("searchString", "")
         
         # Validate parameters
@@ -207,7 +208,7 @@ async def get_form_dependency(
 @router.post("", status_code=201)
 async def create_role(
     request: Request,
-    role_data: RoleCreate,
+    role_data: RoleCreate = Depends(decrypt_body(RoleCreate)),
     current_user: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -253,7 +254,7 @@ async def create_role(
 @router.put("")
 async def update_role(
     request: Request,
-    role_data: RoleUpdate,
+    role_data: RoleUpdate = Depends(decrypt_body(RoleUpdate)),
     current_user: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):

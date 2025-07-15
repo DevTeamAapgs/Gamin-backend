@@ -50,10 +50,11 @@ def decrypt_query(query: str = Query(...), crypto: AESCipher = Depends(get_crypt
 
 
 def decrypt_data_param(
+    request: Request,
     data: str = Query(...),
-    request: Request = None,
     crypto: AESCipher = Depends(get_crypto_service)
 ) -> dict:
+    print(request,"request")
     if request and request.headers.get("x-plaintext", "").lower() == "true":
         return eval(data) if isinstance(data, str) else data
     try:

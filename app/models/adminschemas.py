@@ -42,13 +42,13 @@ class AdminResponse(BaseModel):
     email: str = Field(..., description="Email address")
     is_admin: bool = Field(..., description="Whether user is an admin")
     is_active: bool = Field(..., description="Whether user is active")
-    status: Optional[int] = Field(None, description="User status (1=active, 0=inactive)")
-    fk_role_id: Optional[str] = Field(None, description="Role ID")
-    player_prefix: Optional[str] = Field(None, description="Player prefix")
-    wallet_address: Optional[str] = Field(None, description="Wallet address")
-    profile_photo: Optional[Dict[str, str | float]] = Field(None, description="Profile photo information")
+    status: Optional[int] = None
+    fk_role_id: Optional[str] = None
+    player_prefix: Optional[str] = None
+    wallet_address: Optional[str] = None
+    profile_photo: Optional[Dict[str, str | float]] = None
     created_at: datetime = Field(..., description="Account creation timestamp")
-    last_login: Optional[datetime] = Field(None, description="Last login timestamp")
+    last_login: Optional[datetime] = None
 
 class StatusUpdateRequest(BaseModel):
     """Request model for status updates"""
