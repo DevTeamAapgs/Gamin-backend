@@ -11,29 +11,6 @@ T = TypeVar("T")
 def get_crypto_service() -> AESCipher:
     return AESCipher()
 
-# def decrypt_body(model: Type[T]) -> Callable:
-#     async def dependency(
-#         request: Request,
-#         crypto: AESCipher = Depends(get_crypto_service)
-#     ) -> T:
-#         try:
-#             body = await request.json()
-#             print(body,"body")
-#             # Skip encryption if requested (e.g. Swagger UI)
-#             if request.headers.get("x-plaintext", "").lower() == "true":
-#                 return model(**body)
-
-#             decrypted = {
-#                 k: crypto.decrypt(v) if isinstance(v, str) else v
-#                 for k, v in body.items()
-#             }
-#             print(decrypted,"decrypted")
-#             return model(**decrypted)
-
-#         except Exception as e:
-#             raise HTTPException(status_code=400, detail=f"Decryption failed: {str(e)}")
-    
-#     return dependency
 
 
 def decrypt_body(model: Type[T]) -> Callable[..., T]:

@@ -19,7 +19,7 @@ from app.models.menu import (
 from app.auth.cookie_auth import verify_admin, get_current_user
 from app.db.mongo import get_database
 from app.core.enums import Status, DeletionStatus
-from app.utils.crypto_dependencies import decrypt_data_param
+from app.utils.crypto_dependencies import decrypt_data_param , decrypt_body
 
 import logging
 
@@ -308,8 +308,8 @@ async def update_role(
 @router.patch("")
 async def patch_role(
     request: Request,
-    role_data: RolePatch,
     current_user: dict = Depends(verify_admin),
+    role_data:  RolePatch = Depends(decrypt_body(RolePatch)), 
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Patch role status"""

@@ -41,6 +41,8 @@ def get_password_hash(password: str) -> str:
 async def admin_login( response: Response , body_schema: Annotated[AdminLogin, Body(...,description="Encrypted payload in runtime. This model is used for documentation.")],admin_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Admin login with username and password."""
     try:
+        print(admin_data,"admin_data")
+    
         # Find admin by username
         admin_doc = await db.players.find_one({
             "email": admin_data.username,
