@@ -78,7 +78,6 @@ app = FastAPI(
 )
 
 # Add security headers middleware first
-app.add_middleware(SecurityHeadersMiddleware)
 app.mount("/public", StaticFiles(directory="public"), name="public")
 
 # Add CORS middleware

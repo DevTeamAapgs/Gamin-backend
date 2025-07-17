@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
+from fastapi import Depends
 from jose import JWTError, jwt
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -107,7 +108,7 @@ class TokenManager:
             return None
 
     async def create_player_session(self, player: Player, device_fingerprint: str, ip_address: str) -> PlayerSession:
-        db = get_database()
+        db = Depends(get_database)
 
         # Ensure player has an ID
         if player.id is None:
@@ -116,20 +117,20 @@ class TokenManager:
         access_token = self.create_access_token({"sub": str(player.id), "wallet": player.wallet_address})
         refresh_token = self.create_refresh_token({"sub": str(player.id), "wallet": player.wallet_address})
 
-        session = PlayerSession(
-            player_id=player.id,  # This is now guaranteed to be non-None
-            token_hash=hashlib.sha256(access_token.encode()).hexdigest(),
-            refresh_token=refresh_token,
-            device_fingerprint=device_fingerprint,
-            ip_address=ip_address,
-            expires_at=datetime.utcnow() + timedelta(days=self.refresh_token_expire_days)
-        )
+        session = PlayerSession(**{
+            "player_id": player.id,  
+            "token_hash": hashlib.sha256(access_token.encode()).hexdigest(),
+            "refresh_token": refresh_token,
+            "device_fingerprint": device_fingerprint,
+            "ip_address": ip_address,
+            "expires_at": datetime.utcnow() + timedelta(days=self.refresh_token_expire_days)
+        })
 
-        await db.sessions.insert_one(session.dict(by_alias=True))
+        await db.sessions.insert_one(session)
         return session
 
     async def validate_session(self, token_hash: str, device_fingerprint: str, ip_address: str) -> Optional[PlayerSession]:
-        db = get_database()
+        db = Depends(get_database)
 
         session = await db.sessions.find_one({
             "token_hash": token_hash,
@@ -144,7 +145,7 @@ class TokenManager:
         return None
 
     async def invalidate_session(self, token_hash: str) -> bool:
-        db = get_database()
+        db = Depends(get_database)
 
         result = await db.sessions.update_one(
             {"token_hash": token_hash},
@@ -154,7 +155,7 @@ class TokenManager:
         return result.modified_count > 0
 
     async def cleanup_expired_sessions(self) -> int:
-        db = get_database()
+        db = Depends(get_database)
 
         result = await db.sessions.update_many(
             {"expires_at": {"$lt": datetime.utcnow()}},

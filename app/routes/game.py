@@ -145,7 +145,7 @@ async def submit_game(
         game = Game(**game_doc)
         
         # Verify game belongs to player
-        if str(game.player_id) != player_id:
+        if str(game.fk_player_id) != player_id:
             raise HTTPException(status_code=403, detail="Game does not belong to player")
         
         # Validate game completion
@@ -156,7 +156,7 @@ async def submit_game(
         if validation_result["cheat_detected"]:
             # Handle cheating
             await db.players.update_one(
-                {"_id": game.player_id},
+                {"_id": game.fk_player_id},
                 {"$set": {"is_banned": True, "ban_reason": validation_result["cheat_reason"]}}
             )
             raise HTTPException(status_code=403, detail="Cheating detected")
@@ -187,12 +187,12 @@ async def submit_game(
                 "token_balance": reward
             }
         }
-        await db.players.update_one({"_id": game.player_id}, player_update)
+        await db.players.update_one({"_id": game.fk_player_id}, player_update)
         
         # Create transaction for reward
         if reward > 0:
             reward_transaction = {
-                "player_id": game.player_id,
+                "player_id": game.fk_player_id,
                 "transaction_type": "reward",
                 "amount": reward,
                 "game_id": game.id,
@@ -205,21 +205,20 @@ async def submit_game(
         # Save replay data
         replay = GameReplay(
             game_id=game.id,
-            player_id=game.player_id,
+            fk_player_id=game.fk_player_id,
             replay_data=game_data.dict(),
             action_sequence=game_data.actions,
             mouse_movements=game_data.mouse_movements,
             click_positions=game_data.click_positions,
             timing_data=game_data.timing_data,
             device_info=game_data.device_info,
-            ip_address="unknown",  # Get from request context
-            created_at=datetime.utcnow()
+            ip_address="unknown"
         )
         await db.replays.insert_one(replay.dict(by_alias=True))
         
         # Track analytics
         await analytics_service.track_game_action(
-            str(game.id), str(game.player_id), {
+            str(game.id), str(game.fk_player_id), {
                 "type": "game_completion",
                 "completion_percentage": completion_percentage,
                 "reward": reward,
@@ -284,7 +283,7 @@ async def get_game_history(request: Request, current_user: dict = Depends(get_cu
         db = get_database()
         
         # Get player's games
-        games = await db.games.find({"player_id": player_id}).sort("created_at", -1).limit(limit).to_list(length=limit)
+        games = await db.games.find({"fk_player_id": player_id}).sort("created_at", -1).limit(limit).to_list(length=limit)
         
         response_data = [
             {
@@ -318,7 +317,7 @@ async def get_game_leaderboard(request: Request, game_type: str = "color_match",
         pipeline = [
             {"$match": {"game_type": game_type, "level": level, "status": "completed"}},
             {"$group": {
-                "_id": "$player_id",
+                "_id": "$fk_player_id",
                 "best_completion": {"$max": "$completion_percentage"},
                 "total_games": {"$sum": 1},
                 "total_reward": {"$sum": "$final_reward"}

@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -37,7 +38,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 async def register_player(
     request: Request, 
     response: Response, 
-    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)), 
+    player_data: PlayerCreate ,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    # player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)), 
 
 ):
     """Register a new player."""
@@ -46,25 +49,25 @@ async def register_player(
         # Check if player already exists
         existing_player = await db.players.find_one({
             "$or": [
-                {"wallet_address": player_data.wallet_address},
-                {"username": player_data.username}
+                {"username": player_data.username},
+                {"email": player_data.email}
             ]
         })
         
         if existing_player:
-            raise HTTPException(status_code=400, detail="Player already exists")
+            raise HTTPException(status_code=400, detail="Player Details already exists")
         
         # Create new player
-        player = Player(
-            wallet_address=player_data.wallet_address,
-            username=player_data.username,
-            email=player_data.email,
-            device_fingerprint=player_data.device_fingerprint,
-            ip_address=request.client.host if request.client else "unknown"
-        )
+        player = {
+            "username": player_data.username,
+            "email": player_data.email,
+            "device_fingerprint": player_data.device_fingerprint,
+            "ip_address": request.client.host if request.client else "unknown"
+        }
+        
         
         # Save to database
-        result = await db.players.insert_one(player.dict(by_alias=True))
+        result = await db.players.insert_one(Player(**player))
         player.id = result.inserted_id
         
         # Create session and tokens
