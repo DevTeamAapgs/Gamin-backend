@@ -48,7 +48,7 @@ async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(
         # Find admin by username
         admin_doc = await db.players.find_one({
             "email": admin_data.username,
-            "playertype": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+            "player_type": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
         
        
@@ -73,14 +73,14 @@ async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "playertype": admin_doc.get("playertype", 1)
+            "player_type": admin_doc.get("player_type", 1)
         })
         
         # Create refresh token
         refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "playertype": admin_doc.get("playertype", 1)
+            "player_type": admin_doc.get("player_type", 1)
         })
         
         logger.info(f"Admin logged in: {admin_doc['username']}")
@@ -116,7 +116,7 @@ async def create_admin(
         # Check if admin already exists
         existing_admin = await db.players.find_one({
             "username": admin_data.username,
-            "playertype": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+            "player_type": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
         
         if existing_admin:
@@ -128,7 +128,7 @@ async def create_admin(
             "email": admin_data.email,
             "password_hash": get_password_hash(admin_data.password),
             "wallet_address": None,  # Placeholder
-            "playertype": 1,
+            "player_type": 1,
             "is_active": True,
             "is_verified": True,
             "token_balance": 0,
@@ -173,7 +173,7 @@ async def get_current_admin(
         
         admin_doc = await db.players.find_one({"_id": ObjectId(current_admin.get("sub"))})
         
-        if not admin_doc or admin_doc.get("playertype") not in [0, 1]:
+        if not admin_doc or admin_doc.get("player_type") not in [0, 1]:
             raise HTTPException(status_code=404, detail="Admin not found")
         
         response = AdminResponse(
@@ -209,7 +209,7 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         
         # Check if it's an admin token
-        if payload.get("playertype") not in [0, 1]:
+        if payload.get("player_type") not in [0, 1]:
             raise HTTPException(status_code=403, detail="Admin access required")
         
         admin_id = payload.get("sub")
@@ -222,7 +222,7 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
         
         admin_doc = await db.players.find_one({
             "_id": ObjectId(admin_id),
-            "playertype": {"$in": [0, 1]},  # Allow both SUPERADMIN and ADMINEMPLOYEE
+            "player_type": {"$in": [0, 1]},  # Allow both SUPERADMIN and ADMINEMPLOYEE
             "is_active": True
         })
         
@@ -233,14 +233,14 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "playertype": admin_doc.get("playertype", 0) in [0, 1],
+            "player_type": admin_doc.get("player_type", 0) in [0, 1],
             "is_admin": admin_doc.get("is_admin", True)
         })
         
         new_refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "playertype": admin_doc.get("playertype", 0) in [0, 1]
+            "player_type": admin_doc.get("player_type", 0) in [0, 1]
         })
         
         logger.info(f"Admin token refreshed: {admin_doc['username']}")

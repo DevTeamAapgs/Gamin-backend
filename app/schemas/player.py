@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, EmailStr, Field
 from app.core.enums import PlayerType
 
@@ -29,7 +29,7 @@ class PlayerUpdate(BaseModel):
 
 
 
-class PlayerResponse(PlayerBase):
+class PlayerResponse(BaseModel):
     id: str = Field(..., alias="_id")
     wallet_address: Optional[str]
     player_prefix: Optional[str]  # Add player prefix field
@@ -39,7 +39,7 @@ class PlayerResponse(PlayerBase):
     #   - filesize_bytes: int (file size in bytes)
     #   - filesize_kb: float (file size in kilobytes, rounded to 2 decimals)
     profile_photo: Optional[Dict[str, str | int | float]] = None
-    playertype: Optional[int] = Field(None, description="Player type: 0=SUPERADMIN, 1=ADMINEMPLOYEE, 2=PLAYER")
+    player_type: Optional[int] = Field(None, description="Player type: 0=SUPERADMIN, 1=ADMINEMPLOYEE, 2=PLAYER")
     is_verified: Optional[bool]
     token_balance: Optional[int]
     total_games_played: Optional[int]
@@ -106,3 +106,4 @@ class TransactionResponse(BaseModel):
 
 class BanRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500, description="Reason for banning the player") 
+
