@@ -12,7 +12,6 @@ class PlayerBase(BaseModel):
     email: EmailStr
     status: int
     fk_role_id: str
-    role: Optional[str] = None  # role name (joined)
 
 class PlayerCreate(BaseModel):
     username: str

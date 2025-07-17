@@ -20,7 +20,7 @@ class PaginationResponse(BaseModel):
 
 class ListResponse(BaseModel):
     """Generic list response with pagination"""
-    items: List[Any] = Field(..., description="List of items")
+    data: List[Any] = Field(..., description="List of items")
     pagination: PaginationResponse = Field(..., description="Pagination metadata")
 
 class ErrorResponse(BaseModel):

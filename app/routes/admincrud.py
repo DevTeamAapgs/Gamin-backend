@@ -84,7 +84,7 @@ async def list_admins(
                         query["fk_role_id"] = role_doc["_id"]
                     else:
                         return ListResponse(
-                            items=[],
+                            data=[],
                             pagination=PaginationResponse(
                                 page=page,
                                 limit=count,
@@ -99,14 +99,14 @@ async def list_admins(
         total = await db.players.count_documents(query)
         admins = await db.players.find(query).sort("updated_on", -1).skip(skip).limit(count).to_list(length=count)
         
-        items = []
+        data = []
         for admin in admins:
             role_name = None
             if admin.get("fk_role_id"):
                 role_doc = await db.roles.find_one({"_id": admin["fk_role_id"]})
                 role_name = role_doc["role_name"] if role_doc else None
             
-            items.append(AdminResponse(
+            data.append(AdminResponse(
                 id=str(admin["_id"]),
                 username=admin["username"],
                 email=admin.get("email", ""),
@@ -124,7 +124,7 @@ async def list_admins(
         
         total_pages = (total + count - 1) // count
         return ListResponse(
-            items=items,
+            data=data,
             pagination=PaginationResponse(
                 page=page,
                 limit=count,

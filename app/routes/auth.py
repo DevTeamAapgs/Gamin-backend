@@ -404,26 +404,25 @@ async def get_current_player(
                 profile_photo=current_user.profile_photo
             )
 
-        # Step 1: get all permitted menu_ids
+            # Step 1: Extract permitted menu IDs from raw_permissions
         permitted_menu_ids = {
             perm["fk_menu_id"] for perm in raw_permissions if perm.get("can_access")
         }
 
-        # Step 2: fetch all permitted menus
+        # Step 2: Fetch all permitted menu documents
         permitted_menu_docs = await db.menu_master.find({
             "_id": {"$in": [ObjectId(mid) for mid in permitted_menu_ids]}
         }).to_list(None)
 
-        # Step 3: map them
+        # Step 3: Build menu_map from permitted menus
         menu_map = {str(m["_id"]): m for m in permitted_menu_docs}
 
-        # Step 4: fetch missing parents (of permission items)
+        # Step 4: Fetch missing parent menus
         missing_parent_ids = {
             str(m.get("fk_parent_id"))
             for m in permitted_menu_docs
             if m.get("fk_parent_id") and str(m.get("fk_parent_id")) not in menu_map
         }
-
         if missing_parent_ids:
             parent_docs = await db.menu_master.find({
                 "_id": {"$in": [ObjectId(mid) for mid in missing_parent_ids]}
@@ -431,28 +430,31 @@ async def get_current_player(
             for m in parent_docs:
                 menu_map[str(m["_id"])] = m
 
-        # Step 5: find top-level menus (menu_type == 1) that have their own can_view permission
+        # Step 5: Filter top-level menus with their own can_view permission
         top_menus = []
         for m in menu_map.values():
             if m["menu_type"] != 1:
                 continue
             menu_id = str(m["_id"])
-
-            # check if this menu has a permission with menu_type=3, value=can_view, fk_parent_id == menu_id
             for perm in raw_permissions:
                 perm_id = perm["fk_menu_id"]
                 if perm_id in menu_map:
                     perm_menu = menu_map[perm_id]
-                    if perm_menu.get("menu_type") == 3 and perm_menu.get("menu_value") == "can_view":
-                        if str(perm_menu.get("fk_parent_id")) == menu_id:
-                            top_menus.append(m)
-                            break
+                    if (
+                        perm_menu.get("menu_type") == 3 and
+                        perm_menu.get("menu_value") == "can_view" and
+                        str(perm_menu.get("fk_parent_id")) == menu_id
+                    ):
+                        top_menus.append(m)
+                        break
 
         response_data = []
 
+        # Step 6: Build final structured response
         for top_menu in top_menus:
             top_id = str(top_menu["_id"])
 
+            # Collect top menu permissions
             permissions = []
             for perm in raw_permissions:
                 perm_id = perm["fk_menu_id"]
@@ -471,14 +473,20 @@ async def get_current_player(
                             router_url=p.get("router_url", "")
                         ))
 
+            # Collect submenus that have a can_view permission
             submenus = []
             for sm in menu_map.values():
                 if sm.get("menu_type") == 2 and str(sm.get("fk_parent_id")) == top_id:
+                    submenu_id = str(sm["_id"])
                     submenu_permissions = []
+                    has_can_view = False
+
                     for perm in raw_permissions:
                         if perm["fk_menu_id"] in menu_map:
                             perm_menu = menu_map[perm["fk_menu_id"]]
-                            if perm_menu.get("menu_type") == 3 and str(perm_menu.get("fk_parent_id")) == str(sm["_id"]):
+                            if perm_menu.get("menu_type") == 3 and str(perm_menu.get("fk_parent_id")) == submenu_id:
+                                if perm_menu.get("menu_value") == "can_view":
+                                    has_can_view = True
                                 submenu_permissions.append(PermissionItem(
                                     id=perm["fk_menu_id"],
                                     menu_name=perm_menu.get("menu_name"),
@@ -490,9 +498,10 @@ async def get_current_player(
                                     can_access=True,
                                     router_url=perm_menu.get("router_url", "")
                                 ))
-                    if submenu_permissions:
+
+                    if has_can_view:
                         submenus.append(MenuItem(
-                            id=str(sm["_id"]),
+                            id=submenu_id,
                             menu_name=sm.get("menu_name"),
                             menu_value=sm.get("menu_value"),
                             menu_type=sm.get("menu_type"),
@@ -507,6 +516,7 @@ async def get_current_player(
                             submenu=[]
                         ))
 
+            # Add final top-level menu to response
             response_data.append(MenuItem(
                 id=top_id,
                 menu_name=top_menu.get("menu_name"),
@@ -523,6 +533,7 @@ async def get_current_player(
                 submenu=submenus
             ))
 
+        # Final Response
         return CustomPlayerResponse(
             page_count=len(response_data),
             response_data=response_data,
