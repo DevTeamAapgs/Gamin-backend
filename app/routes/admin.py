@@ -4,6 +4,8 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.schemas.game import GameLevelUpdate, LeaderboardResponse
 from app.schemas.player import AdminLogin, AdminCreate
 from app.auth.token_manager import token_manager
+from app.models.player import Player,PlayerResponse
+import time
 from app.auth.cookie_auth import verify_admin, get_current_user
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
 from app.services.analytics import analytics_service
@@ -17,6 +19,10 @@ from passlib.context import CryptContext
 from bson import ObjectId
 from app.models.adminschemas import TokenResponse, AdminResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.models.player import CustomPlayerResponse, MenuItem, PermissionItem
+from app.core.enums import PlayerType
+from app.auth.cookie_auth import get_current_user, get_current_user_optional
+
 
 from app.utils.crypto_dependencies import EncryptedBody, decrypt_body, decrypt_data_param
 from app.schemas.player import BanRequest
@@ -48,7 +54,7 @@ async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(
         # Find admin by username
         admin_doc = await db.players.find_one({
             "email": admin_data.username,
-            "player_type": {"$in": [0, 1]} 
+            "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
         print("admin_doc",admin_doc)
 
@@ -74,14 +80,14 @@ async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "player_type": admin_doc.get("player_type", 1)
+            "player_type": admin_doc.get("player_type", PlayerType.ADMINEMPLOYEE)
         })
         
         # Create refresh token
         refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "player_type": admin_doc.get("player_type", 1)
+            "player_type": admin_doc.get("player_type", PlayerType.ADMINEMPLOYEE)
         })
         
         logger.info(f"Admin logged in: {admin_doc['username']}")
@@ -116,7 +122,7 @@ async def create_admin(
         # Check if admin already exists
         existing_admin = await db.players.find_one({
             "username": admin_data.username,
-            "player_type": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+            "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
         
         if existing_admin:
@@ -161,29 +167,281 @@ async def create_admin(
         logger.error(f"Create admin failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to create admin")
 
-@router.get("/me", response_model=AdminResponse)
-async def get_current_admin(
-    current_admin: dict = Depends(verify_admin),
-    db: AsyncIOMotorDatabase = Depends(get_database),
+@router.get("/me", response_model=CustomPlayerResponse)
+async def get_current_player(
+    request: Request,
+    current_user: Player = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Get current admin information with optional encrypted parameters."""
+    
+    start_time = time.time()
+    
     try:
+        print(current_user)
 
-        response = AdminResponse(
-            id=str(current_admin["_id"]),
-            username=current_admin["username"],
-            email=current_admin.get("email",""),
-            is_admin=True, 
-            is_active=current_admin.get("is_active", True),
-            created_at=current_admin["created_at"],
-            last_login=current_admin.get("last_login")
+        # Handle superadmin
+        if current_user.player_type == PlayerType.SUPERADMIN:
+            # Superadmin: fetch all menus
+            all_menus = await db.menu_master.find({}).to_list(None)
+
+            menu_map = {str(m["_id"]): m for m in all_menus}
+
+            top_menus = [m for m in all_menus if m["menu_type"] == 1]
+            response_data = []
+
+            for top_menu in top_menus:
+                top_id = str(top_menu["_id"])
+
+                # Get direct permissions
+                permissions = [
+                    PermissionItem(
+                        id=str(p["_id"]),
+                        menu_name=p.get("menu_name"),
+                        menu_value=p.get("menu_value"),
+                        menu_type=p.get("menu_type"),
+                        menu_order=p.get("menu_order"),
+                        fk_parent_id=str(p.get("fk_parent_id")),
+                        description=p.get("description"),
+                        can_access=True,
+                        router_url=p.get("router_url", "")
+                    )
+                    for p in all_menus
+                    if p.get("menu_type") == 3 and str(p.get("fk_parent_id")) == top_id
+                ]
+
+                # Get submenus and their permissions
+                submenus = []
+                for sm in all_menus:
+                    if sm.get("menu_type") == 2 and str(sm.get("fk_parent_id")) == top_id:
+                        submenu_permissions = [
+                            PermissionItem(
+                                id=str(p["_id"]),
+                                menu_name=p.get("menu_name"),
+                                menu_value=p.get("menu_value"),
+                                menu_type=p.get("menu_type"),
+                                menu_order=p.get("menu_order"),
+                                fk_parent_id=str(p.get("fk_parent_id")),
+                                description=p.get("description"),
+                                can_access=True,
+                                router_url=p.get("router_url", "")
+                            )
+                            for p in all_menus
+                            if p.get("menu_type") == 3 and str(p.get("fk_parent_id")) == str(sm["_id"])
+                        ]
+
+                        submenus.append(MenuItem(
+                            id=str(sm["_id"]),
+                            menu_name=sm.get("menu_name"),
+                            menu_value=sm.get("menu_value"),
+                            menu_type=sm.get("menu_type"),
+                            menu_order=sm.get("menu_order"),
+                            fk_parent_id=str(sm.get("fk_parent_id")),
+                            can_show=sm.get("can_show"),
+                            router_url=sm.get("router_url"),
+                            menu_icon=sm.get("menu_icon"),
+                            active_urls=sm.get("active_urls", []),
+                            mobile_access=sm.get("mobile_access"),
+                            permission=submenu_permissions,
+                            submenu=[]
+                        ))
+
+                response_data.append(MenuItem(
+                    id=top_id,
+                    menu_name=top_menu.get("menu_name"),
+                    menu_value=top_menu.get("menu_value"),
+                    menu_type=top_menu.get("menu_type"),
+                    menu_order=top_menu.get("menu_order"),
+                    fk_parent_id=top_menu.get("fk_parent_id"),
+                    can_show=top_menu.get("can_show"),
+                    router_url=top_menu.get("router_url"),
+                    menu_icon=top_menu.get("menu_icon"),
+                    active_urls=top_menu.get("active_urls", []),
+                    mobile_access=top_menu.get("mobile_access"),
+                    permission=permissions,
+                    submenu=submenus
+                ))
+
+            return CustomPlayerResponse(
+                page_count=len(response_data),
+                response_data=response_data,
+                full_name= current_user.username,
+                profile_photo=current_user.profile_photo
+            )
+
+        # If not superadmin, check for role and permissions
+        role_id = current_user.fk_role_id
+        if not role_id:
+            return CustomPlayerResponse(
+                page_count=0,
+                response_data=[],
+                full_name=current_user.username,
+                profile_photo=current_user.profile_photo
+            )
+
+        role_id = ObjectId(role_id) if isinstance(role_id, str) else role_id
+        role_doc = await db.roles.find_one({"_id": role_id})
+        if not role_doc:
+            return CustomPlayerResponse(
+                page_count=0,
+                response_data=[],
+                full_name=current_user.username,
+                profile_photo=current_user.profile_photo
+            )
+
+        raw_permissions = role_doc.get("permissions", [])
+        if not raw_permissions:
+            return CustomPlayerResponse(
+                page_count=0,
+                response_data=[],
+                full_name=current_user.username,
+                profile_photo=current_user.profile_photo
+            )
+
+            # Step 1: Extract permitted menu IDs from raw_permissions
+        permitted_menu_ids = {
+            perm["fk_menu_id"] for perm in raw_permissions if perm.get("can_access")
+        }
+
+        # Step 2: Fetch all permitted menu documents
+        permitted_menu_docs = await db.menu_master.find({
+            "_id": {"$in": [ObjectId(mid) for mid in permitted_menu_ids]}
+        }).to_list(None)
+
+        # Step 3: Build menu_map from permitted menus
+        menu_map = {str(m["_id"]): m for m in permitted_menu_docs}
+
+        # Step 4: Fetch missing parent menus
+        missing_parent_ids = {
+            str(m.get("fk_parent_id"))
+            for m in permitted_menu_docs
+            if m.get("fk_parent_id") and str(m.get("fk_parent_id")) not in menu_map
+        }
+        if missing_parent_ids:
+            parent_docs = await db.menu_master.find({
+                "_id": {"$in": [ObjectId(mid) for mid in missing_parent_ids]}
+            }).to_list(None)
+            for m in parent_docs:
+                menu_map[str(m["_id"])] = m
+
+        # Step 5: Filter top-level menus with their own can_view permission
+        top_menus = []
+        for m in menu_map.values():
+            if m["menu_type"] != 1:
+                continue
+            menu_id = str(m["_id"])
+            for perm in raw_permissions:
+                perm_id = perm["fk_menu_id"]
+                if perm_id in menu_map:
+                    perm_menu = menu_map[perm_id]
+                    if (
+                        perm_menu.get("menu_type") == 3 and
+                        perm_menu.get("menu_value") == "can_view" and
+                        str(perm_menu.get("fk_parent_id")) == menu_id
+                    ):
+                        top_menus.append(m)
+                        break
+
+        response_data = []
+
+        # Step 6: Build final structured response
+        for top_menu in top_menus:
+            top_id = str(top_menu["_id"])
+
+            # Collect top menu permissions
+            permissions = []
+            for perm in raw_permissions:
+                perm_id = perm["fk_menu_id"]
+                if perm_id in menu_map:
+                    p = menu_map[perm_id]
+                    if p.get("menu_type") == 3 and str(p.get("fk_parent_id")) == top_id:
+                        permissions.append(PermissionItem(
+                            id=perm_id,
+                            menu_name=p.get("menu_name"),
+                            menu_value=p.get("menu_value"),
+                            menu_type=p.get("menu_type"),
+                            menu_order=p.get("menu_order"),
+                            fk_parent_id=str(p.get("fk_parent_id")),
+                            description=p.get("description"),
+                            can_access=True,
+                            router_url=p.get("router_url", "")
+                        ))
+
+            # Collect submenus that have a can_view permission
+            submenus = []
+            for sm in menu_map.values():
+                if sm.get("menu_type") == 2 and str(sm.get("fk_parent_id")) == top_id:
+                    submenu_id = str(sm["_id"])
+                    submenu_permissions = []
+                    has_can_view = False
+
+                    for perm in raw_permissions:
+                        if perm["fk_menu_id"] in menu_map:
+                            perm_menu = menu_map[perm["fk_menu_id"]]
+                            if perm_menu.get("menu_type") == 3 and str(perm_menu.get("fk_parent_id")) == submenu_id:
+                                if perm_menu.get("menu_value") == "can_view":
+                                    has_can_view = True
+                                submenu_permissions.append(PermissionItem(
+                                    id=perm["fk_menu_id"],
+                                    menu_name=perm_menu.get("menu_name"),
+                                    menu_value=perm_menu.get("menu_value"),
+                                    menu_type=perm_menu.get("menu_type"),
+                                    menu_order=perm_menu.get("menu_order"),
+                                    fk_parent_id=str(perm_menu.get("fk_parent_id")),
+                                    description=perm_menu.get("description"),
+                                    can_access=True,
+                                    router_url=perm_menu.get("router_url", "")
+                                ))
+
+                    if has_can_view:
+                        submenus.append(MenuItem(
+                            id=submenu_id,
+                            menu_name=sm.get("menu_name"),
+                            menu_value=sm.get("menu_value"),
+                            menu_type=sm.get("menu_type"),
+                            menu_order=sm.get("menu_order"),
+                            fk_parent_id=str(sm.get("fk_parent_id")),
+                            can_show=sm.get("can_show"),
+                            router_url=sm.get("router_url"),
+                            menu_icon=sm.get("menu_icon"),
+                            active_urls=sm.get("active_urls", []),
+                            mobile_access=sm.get("mobile_access"),
+                            permission=submenu_permissions,
+                            submenu=[]
+                        ))
+
+            # Add final top-level menu to response
+            response_data.append(MenuItem(
+                id=top_id,
+                menu_name=top_menu.get("menu_name"),
+                menu_value=top_menu.get("menu_value"),
+                menu_type=top_menu.get("menu_type"),
+                menu_order=top_menu.get("menu_order"),
+                fk_parent_id=top_menu.get("fk_parent_id"),
+                can_show=top_menu.get("can_show"),
+                router_url=top_menu.get("router_url"),
+                menu_icon=top_menu.get("menu_icon"),
+                active_urls=top_menu.get("active_urls", []),
+                mobile_access=top_menu.get("mobile_access"),
+                permission=permissions,
+                submenu=submenus
+            ))
+        end_time = time.time()
+        print(f"Time taken for /me API: {end_time - start_time:.3f} seconds")
+        # Final Response
+        return CustomPlayerResponse(
+            page_count=len(response_data),
+            response_data=response_data,
+            full_name=current_user.username,
+            profile_photo=current_user.profile_photo
         )
-        return response
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Get current admin failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get admin information")
+        import logging
+        logger = logging.getLogger("app.routes.auth")
+        logger.error(f"Get current player failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get player information")
 
 @router.post("/refresh", response_model=TokenResponse)
 async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIOMotorDatabase = Depends(get_database)):
@@ -202,7 +460,7 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         
         # Check if it's an admin token
-        if payload.get("player_type") not in [0, 1]:
+        if payload.get("player_type") not in [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]:
             raise HTTPException(status_code=403, detail="Admin access required")
         
         admin_id = payload.get("sub")
@@ -215,7 +473,7 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
         
         admin_doc = await db.players.find_one({
             "_id": ObjectId(admin_id),
-            "player_type": {"$in": [0, 1]},  # Allow both SUPERADMIN and ADMINEMPLOYEE
+            "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]},  # Allow both SUPERADMIN and ADMINEMPLOYEE
             "is_active": True
         })
         
@@ -226,14 +484,14 @@ async def admin_refresh_token(request: Request, response: Response ,  db:AsyncIO
         access_token = token_manager.create_access_token({
             "sub": str(admin_doc["_id"]), 
             "username": admin_doc["username"],
-            "player_type": admin_doc.get("player_type", 0) in [0, 1],
+            "player_type": admin_doc.get("player_type", PlayerType.SUPERADMIN) in [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN],
             "is_admin": admin_doc.get("is_admin", True)
         })
         
         new_refresh_token = token_manager.create_refresh_token({
             "sub": str(admin_doc["_id"]),
             "username": admin_doc["username"],
-            "player_type": admin_doc.get("player_type", 0) in [0, 1]
+            "player_type": admin_doc.get("player_type",PlayerType.SUPERADMIN) in [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]
         })
         
         logger.info(f"Admin token refreshed: {admin_doc['username']}")
