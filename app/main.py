@@ -13,7 +13,6 @@ from app.core.config import settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.middleware.encryption_middleware import ResponseEncryptionMiddleware
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
-
 # Import routes
 from app.routes import auth, player, game, admin, socket, roles, admincrud, common
 

@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     aes_key: str = os.getenv("AES_KEY", "your-32-byte-aes-key-for-encryption")
     salt: str = os.getenv("SALT", "your-salt-for-encryption")
     
-    
+    #base_url: str = os.getenv("BASE_URL","http://localhost:8000")
     mail_username: str = os.getenv("MAIL_USERNAME", "")
     mail_password: str = os.getenv("MAIL_PASSWORD", "")
     mail_from: str = os.getenv("MAIL_FROM", "")

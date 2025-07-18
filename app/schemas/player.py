@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, EmailStr, Field
 from app.core.enums import PlayerType
 
@@ -12,7 +12,6 @@ class PlayerBase(BaseModel):
     email: EmailStr
     status: int
     fk_role_id: str
-    role: Optional[str] = None  # role name (joined)
 
 class PlayerCreate(BaseModel):
     username: str
@@ -28,7 +27,7 @@ class PlayerUpdate(BaseModel):
 
 
 
-class PlayerResponse(PlayerBase):
+class PlayerResponse(BaseModel):
     id: str = Field(..., alias="_id")
     wallet_address: Optional[str]
     player_prefix: Optional[str]  # Add player prefix field
@@ -105,3 +104,4 @@ class TransactionResponse(BaseModel):
 
 class BanRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500, description="Reason for banning the player") 
+

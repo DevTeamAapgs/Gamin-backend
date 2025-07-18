@@ -123,8 +123,7 @@ class EmailManager:
                 username= self.username,
                 password= self.password,
                 start_tls=True,
-                use_tls=False
-                 ) 
+                use_tls=False) 
             
             logger.info(f"Email sent to {to}")
             return True

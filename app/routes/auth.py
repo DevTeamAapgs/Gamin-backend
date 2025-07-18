@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
+from re import A
+from traceback import print_tb
 from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from typing import List, Dict, Any,Optional
 from app.schemas.player import PlayerCreate, PlayerLogin, PlayerResponse
-from app.models.player import Player
+from app.models.player import Player,PlayerResponse
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import get_current_user, get_current_user_optional
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
@@ -13,7 +16,13 @@ from app.db.mongo import get_database
 from app.core.config import settings
 from datetime import datetime, timedelta
 import logging
+from app.db.mongo import get_database
+from app.auth.cookie_auth import get_current_user
 from typing import Annotated, Callable
+import os
+import shutil
+from pathlib import Path
+from app.core.enums import PlayerType
 
 from app.utils.crypto_dependencies import decrypt_body
 from app.models.adminschemas import TokenResponse, ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
@@ -22,6 +31,7 @@ from bson import ObjectId
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.models.player import CustomPlayerResponse, MenuItem, PermissionItem
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -33,6 +43,23 @@ def get_password_hash(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
+async def cleanup_user_temp_files_on_logout(player_id: str):
+    """Clean up temporary files for a user on logout."""
+    try:
+        temp_dir = Path("public/temp_uploads")
+        if not temp_dir.exists():
+            return
+        
+        # Find and delete temp files for this user
+        for file_path in temp_dir.glob(f"*_{player_id}_*"):
+            try:
+                file_path.unlink()
+                logger.info(f"Cleaned up temp file: {file_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete temp file {file_path}: {e}")
+    except Exception as e:
+        logger.error(f"Cleanup failed for user {player_id}: {e}")
 
 @router.post("/register", response_model=TokenResponse)
 async def register_player(
@@ -56,6 +83,8 @@ async def register_player(
         # Check if player already exists
         existing_player = await db.players.find_one({
             "$or": [
+                {"username": player_data.username},
+                {"email": player_data.email}
                 {"username": player_data.username},
                 {"email": player_data.email}
             ]
@@ -301,29 +330,25 @@ async def get_current_player(request: Request, current_user: dict = Depends(get_
     except HTTPException:
         raise
     except Exception as e:
+        import logging
+        logger = logging.getLogger("app.routes.auth")
         logger.error(f"Get current player failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get player information") 
-
-# Forgot Password Routes
-
+        raise HTTPException(status_code=500, detail="Failed to get player information")
+                        
 @router.post("/forgot-password")
 async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_body(ForgotPasswordRequest)), db: AsyncIOMotorDatabase = Depends(get_database)):
     """Send OTP to email for password reset."""
     try:
-        
         # Check if email exists in database
         user_doc = await db.players.find_one({"email": request_data.email})
         if not user_doc:
             raise HTTPException(status_code=404, detail="Invalid Email Address")
-        
         # Generate OTP
         otp = email_manager.generate_otp()
         otp_expiry = email_manager.get_otp_expiry()
-        
         # Encrypt OTP and expiry time
         encrypted_otp = email_manager.encrypt_data(otp)
         encrypted_expiry = email_manager.encrypt_data(otp_expiry.isoformat())
-        
         # Update user with encrypted OTP and expiry time
         await db.players.update_one(
             {"_id": user_doc["_id"]},
@@ -335,17 +360,12 @@ async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_
                 }
             }
         )
-        
         # Send OTP email
         email_sent = await email_manager.send_otp_email(request_data.email, user_doc.get("username", "User"), otp)
-        
         if not email_sent:
             raise HTTPException(status_code=500, detail="Failed to send OTP email")
-        
         logger.info(f"OTP sent to {request_data.email} for user {user_doc['_id']}")
-        
         return {"message": "OTP sent successfully to your email"}
-        
     except HTTPException:
         raise
     except Exception as e:

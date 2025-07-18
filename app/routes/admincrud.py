@@ -44,7 +44,7 @@ async def list_admins(
         search_string = params.get("search_string")
         status = params.get("status")
         role = params.get("role")
-        query: Dict[str, Any] = {"playertype": {"$in": [0, 1]}}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+        query: Dict[str, Any] = {"player_type": {"$in": [0, 1]}}  # Allow both SUPERADMIN and ADMINEMPLOYEE
 
         if search_string :
             matching_roles = await db.roles.find({
@@ -66,11 +66,11 @@ async def list_admins(
         
         if role:
             if role.lower() in ["admin", "manager"]:
-                query["playertype"] = {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+                query["player_type"] = {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
             elif role.lower() == "superadmin":
-                query["playertype"] = 0
+                query["player_type"] = 0
             elif role.lower() == "player":
-                query["playertype"] = 2
+                query["player_type"] = 2
             else:
                 # Check if role is an ObjectId (role ID)
                 try:
@@ -84,7 +84,7 @@ async def list_admins(
                         query["fk_role_id"] = role_doc["_id"]
                     else:
                         return ListResponse(
-                            items=[],
+                            data=[],
                             pagination=PaginationResponse(
                                 page=page,
                                 limit=count,
@@ -99,14 +99,14 @@ async def list_admins(
         total = await db.players.count_documents(query)
         admins = await db.players.find(query).sort("updated_on", -1).skip(skip).limit(count).to_list(length=count)
         
-        items = []
+        data = []
         for admin in admins:
             role_name = None
             if admin.get("fk_role_id"):
                 role_doc = await db.roles.find_one({"_id": admin["fk_role_id"]})
                 role_name = role_doc["role_name"] if role_doc else None
             
-            items.append(AdminResponse(
+            data.append(AdminResponse(
                 id=str(admin["_id"]),
                 username=admin["username"],
                 email=admin.get("email", ""),
@@ -124,7 +124,7 @@ async def list_admins(
         
         total_pages = (total + count - 1) // count
         return ListResponse(
-            items=items,
+            data=data,
             pagination=PaginationResponse(
                 page=page,
                 limit=count,
@@ -142,14 +142,14 @@ async def list_admins(
 # 2.1. GET /admins/{admin_id} - Get specific admin by ID from URL parameter
 @router.get("/admins/{admin_id}", response_model=AdminResponse)
 async def get_admin_by_id(
-    admin_id: str = Depends(decrypt_body(AdminGetRequest)),
+    admin_id: str,  # Now a path parameter, not decrypted
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Get a specific admin by ID from URL parameter."""
     try:
         #admin_id = params.get("admin_id")
-        admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
+        admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [0, 1]}})
         if not admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
@@ -273,7 +273,7 @@ async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(Admi
             "player_prefix": player_prefix,
             "fk_role_id": role_object_id,
             "rolename": role_doc.get("role_name", ""),
-            "playertype": playertype,
+            "player_type": playertype,
             "is_admin": is_admin,
             "is_active": True,
             "is_verified": True,
@@ -317,13 +317,13 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
     try:
         admin_id = admin_data.id
         # Check if admin exists (SUPERADMIN or ADMINEMPLOYEE)
-        existing_user = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
+        existing_user = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [0, 1]}})
         if not existing_user:
             # Check if user exists but has different playertype
             user_exists = await db.players.find_one({"_id": ObjectId(admin_id)})
             if user_exists:
-                logger.warning(f"User {admin_id} exists but has playertype {user_exists.get('playertype')}, not admin type (0 or 1)")
-                raise HTTPException(status_code=400, detail=f"User exists but is not an admin (playertype: {user_exists.get('playertype')})")
+                logger.warning(f"User {admin_id} exists but has player_type {user_exists.get('player_type')}, not admin type (0 or 1)")
+                raise HTTPException(status_code=400, detail=f"User exists but is not an admin (player_type: {user_exists.get('player_type')})")
             else:
                 logger.warning(f"User {admin_id} not found")
                 raise HTTPException(status_code=404, detail="Admin not found")
@@ -365,7 +365,7 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
                     raise HTTPException(status_code=400, detail="Email already exists")
         
         # Determine new playertype and is_admin if role is provided
-        new_playertype = existing_user.get("playertype", 1)  # Keep existing if no role change
+        new_playertype = existing_user.get("player_type", 1)  # Keep existing if no role change
         new_is_admin = existing_user.get("is_admin", True)   # Keep existing if no role change
         
         # Get role document if role is provided
@@ -461,7 +461,7 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
         update_data = {
             "updated_on": datetime.utcnow(),
             "updated_by": current_admin.get("_id"),
-            "playertype": new_playertype,
+            "player_type": new_playertype,
             "is_admin": new_is_admin
         }
         if admin_data.username:
@@ -503,7 +503,7 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
 # 5. PATCH /admins/status - Update admin status
 @router.patch("/admins/status")
 async def update_admin_status(
-    status_data: AdminStatusUpdateRequest = Depends(decrypt_body(AdminStatusUpdateRequest)),
+    status_data: AdminStatusUpdateRequest,
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -512,7 +512,7 @@ async def update_admin_status(
         admin_id = status_data.id
         
         # Check if admin exists
-        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
+        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [0, 1]}})
         if not existing_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
@@ -551,7 +551,7 @@ async def delete_admin(
     try:
         admin_id = admin_data.admin_id
         # Check if admin exists
-        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "playertype": {"$in": [0, 1]}})
+        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [0, 1]}})
         if not existing_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         

@@ -179,7 +179,7 @@ async def init_database():
                 "email": "admin@gamingplatform.com",
                 "wallet_address": "0x0000000000000000000000000000000000000000",
                 "password_hash": "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj4J/HS.i8eG",  # "admin123"
-                "playertype": PlayerType.SUPERADMIN,
+                "player_type": PlayerType.SUPERADMIN,
                 "is_verified": True,
                 "token_balance": 0,
                 "total_games_played": 0,

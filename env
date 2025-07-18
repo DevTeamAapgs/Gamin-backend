@@ -18,6 +18,7 @@ MAIL_USERNAME=smtp@mailtrap.io
 MAIL_PASSWORD=95beec87707cc59f2f2dc215a6691234
 MAIL_TLS=true
 MAIL_SSL=false
+#BASE_URL=http://localhost:8000
 
 # Cookie Configuration
 COOKIE_DOMAIN=localhost

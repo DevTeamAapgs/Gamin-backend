@@ -160,7 +160,7 @@ async def verify_admin(
         )
     
     # Check if user is admin (playertype=0 for SUPERADMIN, 1 for ADMINEMPLOYEE)
-    if user_doc.get("playertype") not in [0, 1]:
+    if user_doc.get("player_type") not in [PlayerType.SUPERADMIN, PlayerType.ADMINEMPLOYEE]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
     return user_doc 

@@ -111,6 +111,9 @@ async def delete_file(
     current_user: Player = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
+    print(Path("public/uploads/file_686b92d57248234e88b16a60_ae41d855.png").exists())
+    print(file_url_path)
+    print(Path(file_url_path).exists())
     """Delete file for the current user."""
     try:
         # Get current user's ID
