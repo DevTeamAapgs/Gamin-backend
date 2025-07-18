@@ -17,7 +17,6 @@ class PlayerCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
-    role: str
     status: int = 1
 
 class PlayerUpdate(BaseModel):

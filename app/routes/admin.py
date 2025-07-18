@@ -56,7 +56,8 @@ async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(
             "email": admin_data.username,
             "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         })
-        
+        print("admin_doc",admin_doc)
+
        
         if not admin_doc:
             raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -110,7 +111,6 @@ async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(
 @router.post("/create", response_model=AdminResponse )
 async def create_admin(
     request: Request,
-    _: Annotated[AdminCreate, Body(..., description="Encrypted payload only for docs")],
     admin_data: AdminCreate = Depends(decrypt_body(AdminCreate)),
     db:AsyncIOMotorDatabase = Depends(get_database),
     current_admin: dict = Depends(verify_admin), 

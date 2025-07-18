@@ -38,6 +38,7 @@ class AESCipher:
 
     def decrypt(self, enc_data: str) -> str:
         try:
+            print("enc_data",enc_data)
             raw = base64.urlsafe_b64decode(enc_data)
             iv, ct = raw[:16], raw[16:]
 

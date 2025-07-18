@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from re import A
 from traceback import print_tb
 from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
@@ -64,49 +65,57 @@ async def cleanup_user_temp_files_on_logout(player_id: str):
 async def register_player(
     request: Request, 
     response: Response, 
+    # player_data: PlayerCreate ,
     player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)), 
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),
+
 ):
     """Register a new player."""
     try:
+        # Access request details set by SecurityLoggingMiddleware
+        device_fingerprint = getattr(request.state, 'device_fingerprint', None)
+        client_ip = getattr(request.state, 'client_ip', None)
+        user_agent = getattr(request.state, 'user_agent', None)
+        
+        # Log the request details for debugging
+        logger.info(f"Registration request details - Device: {device_fingerprint}, IP: {client_ip}, User-Agent: {user_agent}")
         
         # Check if player already exists
         existing_player = await db.players.find_one({
             "$or": [
                 {"username": player_data.username},
                 {"email": player_data.email}
+               
             ]
         })
         
         if existing_player:
-            raise HTTPException(status_code=400, detail="Player already exists")
+            raise HTTPException(status_code=400, detail="Player Details already exists")
         
-        # Create new player document
-        player_doc = {
+        # Create new player
+        player = Player(**{
             "username": player_data.username,
             "email": player_data.email,
-            "ip_address": request.client.host if request.client else "unknown"
-        }
+            "device_fingerprint": device_fingerprint,
+            "ip_address": client_ip
+        })
+        
         
         # Save to database
-        result = await db.players.insert_one(player_doc)
-        player_id = result.inserted_id
+        result = await db.players.insert_one(player.model_dump())
+        player.id = result.inserted_id
         
-        # Create Player object for session
-        player_doc["_id"] = player_id
-        player = Player(**player_doc)
-        
-        # Create session and tokens
-        device_fingerprint = "default"
+        # Create session and tokens with enhanced security details
         session = await token_manager.create_player_session(
-            player, device_fingerprint, request.client.host if request.client else "unknown"
+            player, device_fingerprint or "unknown", client_ip or "unknown"
         )
         
+        print("session",session)
         # Generate tokens
-        access_token = token_manager.create_access_token({"sub": str(player_id), "username": player_data.username})
+        access_token = token_manager.create_access_token({"sub": str(player.id), "wallet": player.wallet_address })
         refresh_token = session.refresh_token
         
-        logger.info(f"New player registered: {player_data.username}")
+        logger.info(f"New player registered: {player.username} from IP: {client_ip} with device: {device_fingerprint}")
         
         # Set cookies
         set_auth_cookies(response, access_token, refresh_token)
@@ -122,12 +131,19 @@ async def register_player(
         raise
     except Exception as e:
         logger.error(f"Registration failed: {e}")
+        if(result.inserted_id):
+            await db.players.delete_one({"_id": result.inserted_id})
         raise HTTPException(status_code=500, detail="Registration failed")
 
 @router.post("/login", response_model=TokenResponse)
 async def login_player(  request: Request, response: Response, player_data: PlayerLogin = Depends(decrypt_body(PlayerLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Login existing player."""
     try:
+        # Access request details set by SecurityLoggingMiddleware
+        device_fingerprint = getattr(request.state, 'device_fingerprint', None)
+        client_ip = getattr(request.state, 'client_ip', None)
+        user_agent = getattr(request.state, 'user_agent', None)
+        
         
         # Find player by wallet address
         player_doc = await db.players.find_one({"wallet_address": player_data.wallet_address})
@@ -146,15 +162,15 @@ async def login_player(  request: Request, response: Response, player_data: Play
             {
                 "$set": {
                     "last_login": datetime.utcnow(),
-                    "ip_address": request.client.host if request.client else "unknown",
-                    "device_fingerprint": player_data.device_fingerprint
+                    "ip_address": client_ip or "unknown",
+                    "device_fingerprint": device_fingerprint
                 }
             }
         )
         
         # Create new session
         session = await token_manager.create_player_session(
-            player, player_data.device_fingerprint, player_data.ip_address
+            player, device_fingerprint or "unknown", client_ip or "unknown"
         )
         
         # Generate tokens
@@ -277,270 +293,39 @@ async def logout(request: Request, response: Response, db: AsyncIOMotorDatabase 
         logger.error(f"Logout failed: {e}")
         raise HTTPException(status_code=500, detail="Logout failed")
 
-@router.get("/me", response_model=CustomPlayerResponse)
-async def get_current_player(
-    request: Request,
-    current_user: Player = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_database)
-):
+@router.get("/me", response_model=PlayerResponse)
+async def get_current_player(request: Request, current_user: dict = Depends(get_current_user), db:AsyncIOMotorDatabase = Depends(get_database)):
+    """Get current player information."""
     try:
-        print(current_user)
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+        
 
-        # Handle superadmin
-        if current_user.player_type == PlayerType.SUPERADMIN:
-            # Superadmin: fetch all menus
-            all_menus = await db.menu_master.find({}).to_list(None)
+        # Get player
+        player_doc = await db.players.find_one({"_id": player_id})
+        if not player_doc:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        player = Player(**player_doc)
 
-            menu_map = {str(m["_id"]): m for m in all_menus}
-
-            top_menus = [m for m in all_menus if m["menu_type"] == 1]
-            response_data = []
-
-            for top_menu in top_menus:
-                top_id = str(top_menu["_id"])
-
-                # Get direct permissions
-                permissions = [
-                    PermissionItem(
-                        id=str(p["_id"]),
-                        menu_name=p.get("menu_name"),
-                        menu_value=p.get("menu_value"),
-                        menu_type=p.get("menu_type"),
-                        menu_order=p.get("menu_order"),
-                        fk_parent_id=str(p.get("fk_parent_id")),
-                        description=p.get("description"),
-                        can_access=True,
-                        router_url=p.get("router_url", "")
-                    )
-                    for p in all_menus
-                    if p.get("menu_type") == 3 and str(p.get("fk_parent_id")) == top_id
-                ]
-
-                # Get submenus and their permissions
-                submenus = []
-                for sm in all_menus:
-                    if sm.get("menu_type") == 2 and str(sm.get("fk_parent_id")) == top_id:
-                        submenu_permissions = [
-                            PermissionItem(
-                                id=str(p["_id"]),
-                                menu_name=p.get("menu_name"),
-                                menu_value=p.get("menu_value"),
-                                menu_type=p.get("menu_type"),
-                                menu_order=p.get("menu_order"),
-                                fk_parent_id=str(p.get("fk_parent_id")),
-                                description=p.get("description"),
-                                can_access=True,
-                                router_url=p.get("router_url", "")
-                            )
-                            for p in all_menus
-                            if p.get("menu_type") == 3 and str(p.get("fk_parent_id")) == str(sm["_id"])
-                        ]
-
-                        submenus.append(MenuItem(
-                            id=str(sm["_id"]),
-                            menu_name=sm.get("menu_name"),
-                            menu_value=sm.get("menu_value"),
-                            menu_type=sm.get("menu_type"),
-                            menu_order=sm.get("menu_order"),
-                            fk_parent_id=str(sm.get("fk_parent_id")),
-                            can_show=sm.get("can_show"),
-                            router_url=sm.get("router_url"),
-                            menu_icon=sm.get("menu_icon"),
-                            active_urls=sm.get("active_urls", []),
-                            mobile_access=sm.get("mobile_access"),
-                            permission=submenu_permissions,
-                            submenu=[]
-                        ))
-
-                response_data.append(MenuItem(
-                    id=top_id,
-                    menu_name=top_menu.get("menu_name"),
-                    menu_value=top_menu.get("menu_value"),
-                    menu_type=top_menu.get("menu_type"),
-                    menu_order=top_menu.get("menu_order"),
-                    fk_parent_id=top_menu.get("fk_parent_id"),
-                    can_show=top_menu.get("can_show"),
-                    router_url=top_menu.get("router_url"),
-                    menu_icon=top_menu.get("menu_icon"),
-                    active_urls=top_menu.get("active_urls", []),
-                    mobile_access=top_menu.get("mobile_access"),
-                    permission=permissions,
-                    submenu=submenus
-                ))
-
-            return CustomPlayerResponse(
-                page_count=len(response_data),
-                response_data=response_data,
-                full_name= current_user.username,
-                profile_photo=current_user.profile_photo
-            )
-
-        # If not superadmin, check for role and permissions
-        role_id = current_user.fk_role_id
-        if not role_id:
-            return CustomPlayerResponse(
-                page_count=0,
-                response_data=[],
-                full_name=current_user.username,
-                profile_photo=current_user.profile_photo
-            )
-
-        role_id = ObjectId(role_id) if isinstance(role_id, str) else role_id
-        role_doc = await db.roles.find_one({"_id": role_id})
-        if not role_doc:
-            return CustomPlayerResponse(
-                page_count=0,
-                response_data=[],
-                full_name=current_user.username,
-                profile_photo=current_user.profile_photo
-            )
-
-        raw_permissions = role_doc.get("permissions", [])
-        if not raw_permissions:
-            return CustomPlayerResponse(
-                page_count=0,
-                response_data=[],
-                full_name=current_user.username,
-                profile_photo=current_user.profile_photo
-            )
-
-            # Step 1: Extract permitted menu IDs from raw_permissions
-        permitted_menu_ids = {
-            perm["fk_menu_id"] for perm in raw_permissions if perm.get("can_access")
-        }
-
-        # Step 2: Fetch all permitted menu documents
-        permitted_menu_docs = await db.menu_master.find({
-            "_id": {"$in": [ObjectId(mid) for mid in permitted_menu_ids]}
-        }).to_list(None)
-
-        # Step 3: Build menu_map from permitted menus
-        menu_map = {str(m["_id"]): m for m in permitted_menu_docs}
-
-        # Step 4: Fetch missing parent menus
-        missing_parent_ids = {
-            str(m.get("fk_parent_id"))
-            for m in permitted_menu_docs
-            if m.get("fk_parent_id") and str(m.get("fk_parent_id")) not in menu_map
-        }
-        if missing_parent_ids:
-            parent_docs = await db.menu_master.find({
-                "_id": {"$in": [ObjectId(mid) for mid in missing_parent_ids]}
-            }).to_list(None)
-            for m in parent_docs:
-                menu_map[str(m["_id"])] = m
-
-        # Step 5: Filter top-level menus with their own can_view permission
-        top_menus = []
-        for m in menu_map.values():
-            if m["menu_type"] != 1:
-                continue
-            menu_id = str(m["_id"])
-            for perm in raw_permissions:
-                perm_id = perm["fk_menu_id"]
-                if perm_id in menu_map:
-                    perm_menu = menu_map[perm_id]
-                    if (
-                        perm_menu.get("menu_type") == 3 and
-                        perm_menu.get("menu_value") == "can_view" and
-                        str(perm_menu.get("fk_parent_id")) == menu_id
-                    ):
-                        top_menus.append(m)
-                        break
-
-        response_data = []
-
-        # Step 6: Build final structured response
-        for top_menu in top_menus:
-            top_id = str(top_menu["_id"])
-
-            # Collect top menu permissions
-            permissions = []
-            for perm in raw_permissions:
-                perm_id = perm["fk_menu_id"]
-                if perm_id in menu_map:
-                    p = menu_map[perm_id]
-                    if p.get("menu_type") == 3 and str(p.get("fk_parent_id")) == top_id:
-                        permissions.append(PermissionItem(
-                            id=perm_id,
-                            menu_name=p.get("menu_name"),
-                            menu_value=p.get("menu_value"),
-                            menu_type=p.get("menu_type"),
-                            menu_order=p.get("menu_order"),
-                            fk_parent_id=str(p.get("fk_parent_id")),
-                            description=p.get("description"),
-                            can_access=True,
-                            router_url=p.get("router_url", "")
-                        ))
-
-            # Collect submenus that have a can_view permission
-            submenus = []
-            for sm in menu_map.values():
-                if sm.get("menu_type") == 2 and str(sm.get("fk_parent_id")) == top_id:
-                    submenu_id = str(sm["_id"])
-                    submenu_permissions = []
-                    has_can_view = False
-
-                    for perm in raw_permissions:
-                        if perm["fk_menu_id"] in menu_map:
-                            perm_menu = menu_map[perm["fk_menu_id"]]
-                            if perm_menu.get("menu_type") == 3 and str(perm_menu.get("fk_parent_id")) == submenu_id:
-                                if perm_menu.get("menu_value") == "can_view":
-                                    has_can_view = True
-                                submenu_permissions.append(PermissionItem(
-                                    id=perm["fk_menu_id"],
-                                    menu_name=perm_menu.get("menu_name"),
-                                    menu_value=perm_menu.get("menu_value"),
-                                    menu_type=perm_menu.get("menu_type"),
-                                    menu_order=perm_menu.get("menu_order"),
-                                    fk_parent_id=str(perm_menu.get("fk_parent_id")),
-                                    description=perm_menu.get("description"),
-                                    can_access=True,
-                                    router_url=perm_menu.get("router_url", "")
-                                ))
-
-                    if has_can_view:
-                        submenus.append(MenuItem(
-                            id=submenu_id,
-                            menu_name=sm.get("menu_name"),
-                            menu_value=sm.get("menu_value"),
-                            menu_type=sm.get("menu_type"),
-                            menu_order=sm.get("menu_order"),
-                            fk_parent_id=str(sm.get("fk_parent_id")),
-                            can_show=sm.get("can_show"),
-                            router_url=sm.get("router_url"),
-                            menu_icon=sm.get("menu_icon"),
-                            active_urls=sm.get("active_urls", []),
-                            mobile_access=sm.get("mobile_access"),
-                            permission=submenu_permissions,
-                            submenu=[]
-                        ))
-
-            # Add final top-level menu to response
-            response_data.append(MenuItem(
-                id=top_id,
-                menu_name=top_menu.get("menu_name"),
-                menu_value=top_menu.get("menu_value"),
-                menu_type=top_menu.get("menu_type"),
-                menu_order=top_menu.get("menu_order"),
-                fk_parent_id=top_menu.get("fk_parent_id"),
-                can_show=top_menu.get("can_show"),
-                router_url=top_menu.get("router_url"),
-                menu_icon=top_menu.get("menu_icon"),
-                active_urls=top_menu.get("active_urls", []),
-                mobile_access=top_menu.get("mobile_access"),
-                permission=permissions,
-                submenu=submenus
-            ))
-
-        # Final Response
-        return CustomPlayerResponse(
-            page_count=len(response_data),
-            response_data=response_data,
-            full_name=current_user.username,
-            profile_photo=current_user.profile_photo
+        print("player",player)
+        
+        response = PlayerResponse(
+            id=str(player.id),
+            wallet_address=player.wallet_address,
+            username=player.username,
+            email=player.email,
+            token_balance=player.token_balance,
+            total_games_played=player.total_games_played,
+            total_tokens_earned=player.total_tokens_earned,
+            total_tokens_spent=player.total_tokens_spent,
+            is_active=player.is_active,
+            created_at=player.created_at,
+            last_login=player.last_login
         )
-
+        return response
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -556,6 +341,7 @@ async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_
         # Check if email exists in database
         user_doc = await db.players.find_one({"email": request_data.email})
         if not user_doc:
+            print("user_doc",user_doc)
             raise HTTPException(status_code=404, detail="Invalid Email Address")
         # Generate OTP
         otp = email_manager.generate_otp()
@@ -580,7 +366,8 @@ async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_
             raise HTTPException(status_code=500, detail="Failed to send OTP email")
         logger.info(f"OTP sent to {request_data.email} for user {user_doc['_id']}")
         return {"message": "OTP sent successfully to your email"}
-    except HTTPException:
+    except HTTPException as e:
+        print("eeeeeee",e)
         raise
     except Exception as e:
         logger.error(f"Forgot password failed: {e}")

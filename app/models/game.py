@@ -5,7 +5,7 @@ from app.models.base import BaseDocument
 from app.utils.pyobjectid import PyObjectId
 
 class Game(BaseDocument):
-    player_id: PyObjectId
+    fk_player_id: PyObjectId
     game_type: str = Field(default="color_match")  # "color_match", "tube_filling"
     level_number: int
     game_status: str = Field(default="active")  # "active", "completed", "failed", "abandoned"
@@ -33,14 +33,14 @@ class GameLevel(BaseDocument):
 
 class GameAction(BaseDocument):
     game_id: PyObjectId
-    player_id: PyObjectId
+    fk_player_id: PyObjectId
     action_type: str  # "move", "click", "drag", "drop", "complete", "fail"
     action_data: Dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     session_id: Optional[str] = None
 
 class GameAttempt(BaseDocument):
-    player_id: PyObjectId
+    fk_player_id: PyObjectId
     level_number: int
     game_type: str
     attempt_number: int
@@ -53,7 +53,7 @@ class GameAttempt(BaseDocument):
     completion_percentage: float = Field(default=0.0)
 
 class GameAnalytics(BaseDocument):
-    player_id: PyObjectId
+    fk_player_id: PyObjectId
     game_type: str
     level_number: int
     total_attempts: int = Field(default=0)
@@ -67,7 +67,7 @@ class GameAnalytics(BaseDocument):
 
 class GameReplay(BaseDocument):
     game_id: PyObjectId
-    player_id: PyObjectId
+    fk_player_id: PyObjectId
     replay_data: Dict[str, Any] = Field(default_factory=dict)
     action_sequence: List[Dict[str, Any]] = Field(default_factory=list)
     mouse_movements: List[Dict[str, Any]] = Field(default_factory=list)
