@@ -48,9 +48,10 @@ async def admin_login( response: Response ,    admin_data: AdminLogin = Depends(
         # Find admin by username
         admin_doc = await db.players.find_one({
             "email": admin_data.username,
-            "player_type": {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+            "player_type": {"$in": [0, 1]} 
         })
-        
+        print("admin_doc",admin_doc)
+
        
         if not admin_doc:
             raise HTTPException(status_code=401, detail="Invalid credentials")

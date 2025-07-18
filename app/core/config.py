@@ -7,7 +7,7 @@ load_dotenv()
 
 class Settings(BaseSettings):
     # Database Configuration
-    mongodb_url: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017/gaming_platform")
+    mongodb_url: str = os.getenv("MONGODB_URL", "mongodb://192.168.1.54:27017/gaming_platform")
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")
     mongodb_db_name: str = os.getenv("MONGODB_DB_NAME", "gaming_platform")
     

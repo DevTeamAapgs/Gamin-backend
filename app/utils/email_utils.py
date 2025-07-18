@@ -45,6 +45,7 @@ class EmailManager:
     def _validate_config(self):
         """Validate SMTP configuration"""
         required = [self.username, self.password, self.server, self.port]
+        print("required",required)
         if not all(required):
             logger.error("Incomplete SMTP configuration - email sending disabled")
             self.email_enabled = False

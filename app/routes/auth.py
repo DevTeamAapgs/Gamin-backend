@@ -85,8 +85,7 @@ async def register_player(
             "$or": [
                 {"username": player_data.username},
                 {"email": player_data.email}
-                {"username": player_data.username},
-                {"email": player_data.email}
+               
             ]
         })
         
@@ -342,6 +341,7 @@ async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_
         # Check if email exists in database
         user_doc = await db.players.find_one({"email": request_data.email})
         if not user_doc:
+            print("user_doc",user_doc)
             raise HTTPException(status_code=404, detail="Invalid Email Address")
         # Generate OTP
         otp = email_manager.generate_otp()
@@ -366,7 +366,8 @@ async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_
             raise HTTPException(status_code=500, detail="Failed to send OTP email")
         logger.info(f"OTP sent to {request_data.email} for user {user_doc['_id']}")
         return {"message": "OTP sent successfully to your email"}
-    except HTTPException:
+    except HTTPException as e:
+        print("eeeeeee",e)
         raise
     except Exception as e:
         logger.error(f"Forgot password failed: {e}")

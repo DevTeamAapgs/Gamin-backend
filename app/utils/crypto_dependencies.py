@@ -33,7 +33,6 @@ def decrypt_body(model: Type[T]) -> Callable[..., T]:
             # If decrypted contains a nested 'data' stringified JSON
             if isinstance(decrypted.get("data"), str):
                 decrypted = json.loads(decrypted["data"])
-
             return model(**decrypted)
 
         except Exception as e:
