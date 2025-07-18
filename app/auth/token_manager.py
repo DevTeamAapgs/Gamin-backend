@@ -108,7 +108,7 @@ class TokenManager:
             return None
 
     async def create_player_session(self, player: Player, device_fingerprint: str, ip_address: str) -> PlayerSession:
-        db = Depends(get_database)
+        db = get_database()
 
         # Ensure player has an ID
         if player.id is None:
@@ -125,8 +125,7 @@ class TokenManager:
             "ip_address": ip_address,
             "expires_at": datetime.utcnow() + timedelta(days=self.refresh_token_expire_days)
         })
-
-        await db.sessions.insert_one(session)
+        await db.sessions.insert_one(session.model_dump())
         return session
 
     async def validate_session(self, token_hash: str, device_fingerprint: str, ip_address: str) -> Optional[PlayerSession]:

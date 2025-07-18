@@ -38,13 +38,20 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 async def register_player(
     request: Request, 
     response: Response, 
-    player_data: PlayerCreate ,
+    # player_data: PlayerCreate ,
+    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)), 
     db: AsyncIOMotorDatabase = Depends(get_database),
-    # player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)), 
 
 ):
     """Register a new player."""
     try:
+        # Access request details set by SecurityLoggingMiddleware
+        device_fingerprint = getattr(request.state, 'device_fingerprint', None)
+        client_ip = getattr(request.state, 'client_ip', None)
+        user_agent = getattr(request.state, 'user_agent', None)
+        
+        # Log the request details for debugging
+        logger.info(f"Registration request details - Device: {device_fingerprint}, IP: {client_ip}, User-Agent: {user_agent}")
         
         # Check if player already exists
         existing_player = await db.players.find_one({
@@ -58,29 +65,29 @@ async def register_player(
             raise HTTPException(status_code=400, detail="Player Details already exists")
         
         # Create new player
-        player = {
+        player = Player(**{
             "username": player_data.username,
             "email": player_data.email,
-            "device_fingerprint": player_data.device_fingerprint,
-            "ip_address": request.client.host if request.client else "unknown"
-        }
+            "device_fingerprint": device_fingerprint,
+            "ip_address": client_ip
+        })
         
         
         # Save to database
-        result = await db.players.insert_one(Player(**player))
+        result = await db.players.insert_one(player.model_dump())
         player.id = result.inserted_id
         
-        # Create session and tokens
-        device_fingerprint = player_data.device_fingerprint or "default"
+        # Create session and tokens with enhanced security details
         session = await token_manager.create_player_session(
-            player, device_fingerprint, request.client.host if request.client else "unknown"
+            player, device_fingerprint or "unknown", client_ip or "unknown"
         )
         
+        print("session",session)
         # Generate tokens
-        access_token = token_manager.create_access_token({"sub": str(player.id), "wallet": player.wallet_address})
+        access_token = token_manager.create_access_token({"sub": str(player.id), "wallet": player.wallet_address })
         refresh_token = session.refresh_token
         
-        logger.info(f"New player registered: {player.username}")
+        logger.info(f"New player registered: {player.username} from IP: {client_ip} with device: {device_fingerprint}")
         
         # Set cookies
         set_auth_cookies(response, access_token, refresh_token)
@@ -96,12 +103,19 @@ async def register_player(
         raise
     except Exception as e:
         logger.error(f"Registration failed: {e}")
+        if(result.inserted_id):
+            await db.players.delete_one({"_id": result.inserted_id})
         raise HTTPException(status_code=500, detail="Registration failed")
 
 @router.post("/login", response_model=TokenResponse)
 async def login_player(  request: Request, response: Response, player_data: PlayerLogin = Depends(decrypt_body(PlayerLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Login existing player."""
     try:
+        # Access request details set by SecurityLoggingMiddleware
+        device_fingerprint = getattr(request.state, 'device_fingerprint', None)
+        client_ip = getattr(request.state, 'client_ip', None)
+        user_agent = getattr(request.state, 'user_agent', None)
+        
         
         # Find player by wallet address
         player_doc = await db.players.find_one({"wallet_address": player_data.wallet_address})
@@ -120,15 +134,15 @@ async def login_player(  request: Request, response: Response, player_data: Play
             {
                 "$set": {
                     "last_login": datetime.utcnow(),
-                    "ip_address": request.client.host if request.client else "unknown",
-                    "device_fingerprint": player_data.device_fingerprint
+                    "ip_address": client_ip or "unknown",
+                    "device_fingerprint": device_fingerprint
                 }
             }
         )
         
         # Create new session
         session = await token_manager.create_player_session(
-            player, player_data.device_fingerprint, player_data.ip_address
+            player, device_fingerprint or "unknown", client_ip or "unknown"
         )
         
         # Generate tokens
@@ -259,6 +273,7 @@ async def get_current_player(request: Request, current_user: dict = Depends(get_
         if not player_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
         
+
         # Get player
         player_doc = await db.players.find_one({"_id": player_id})
         if not player_doc:

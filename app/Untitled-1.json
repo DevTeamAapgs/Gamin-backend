@@ -1,0 +1,135 @@
+{
+    "_id": "ObjectId",
+    "wallet_address": "0x...",
+    "username": "player123",
+    "email": "player@example.com",
+    "token_balance": 1000.0,
+    "total_games_played": 50,
+    "total_tokens_earned": 2500.0,
+    "total_tokens_spent": 1500.0,
+    "is_banned": false,
+    "device_fingerprint": "hash",
+    "ip_address": "192.168.1.1",
+    "last_login": "2024-01-01T12:00:00Z",
+    "fk_role_id": "ObjectId",
+    "role": "player",
+    "status": 1,
+    "created_on": "2024-01-01T00:00:00Z",
+    "updated_on": "2024-01-01T00:00:00Z",
+    "updated_by": "ObjectId",
+    "created_by": "ObjectId",
+    "dels": 1
+  }
+
+// Game
+  {
+    "_id": "ObjectId",
+    "fk_player_id": "ObjectId",
+    "game_type": "color_match",
+    "level_number": 1,
+    "game_status": "completed",
+    "score": 1200,
+    "tokens_earned": 100.0,
+    "entry_cost": 10.0,
+    "start_time": "2024-01-01T12:00:00Z",
+    "end_time": "2024-01-01T12:01:30Z",
+    "duration": 90.0,
+    "moves_count": 30,
+    "max_moves": 100,
+    "game_data": {},
+    "replay_data": [],
+    "created_on": "2024-01-01T12:00:00Z",
+    "updated_on": "2024-01-01T12:01:30Z",
+    "status": 1,
+    "dels": 1,
+    "created_by": "ObjectId",
+    "updated_by": "ObjectId"
+  }
+
+
+  // transactions
+  {
+    "_id": "ObjectId",
+    "player_id": "ObjectId",
+    "transaction_type": "reward",  // "game_entry", "reward", "withdrawal", "deposit"
+    "amount": 100.0,
+    "current_total_amount": 100.0,
+    "game_id": "ObjectId",
+    "description": "Reward for winning game",
+    "transaction_status": "completed", // "pending", "completed", "failed"
+    "tx_hash": "0x...",
+    "completed_at": "2024-01-01T12:05:00Z",
+    "created_on": "2024-01-01T12:00:00Z",
+    "updated_on": "2024-01-01T12:05:00Z",
+    "status": 1,
+    "dels": 1
+  }
+
+  // sessions (or playersessions)
+
+  {
+    "_id": "ObjectId",
+    "player_id": "ObjectId",
+    "token_hash": "hash",
+    "refresh_token": "encrypted_token",
+    "device_fingerprint": "hash",
+    "ip_address": "192.168.1.1",
+    "user_agent": "Mozilla/5.0",
+    "expires_at": "2024-01-08T12:00:00Z",
+    "last_activity": "2024-01-01T12:00:00Z",
+    "is_active": true,
+    "created_on": "2024-01-01T12:00:00Z",
+    "updated_on": "2024-01-01T12:00:00Z",
+    "status": 1,
+    "dels": 1
+  }
+
+  // request_logs
+  {
+    "_id": "ObjectId",
+    "player_id": "ObjectId",
+    "endpoint": "/api/v1/game/start",
+    "method": "POST",
+    "request_time": "2024-01-01T12:00:00Z",
+    "response_status": 200,
+    "ip_address": "192.168.1.1",
+    "user_agent": "Mozilla/5.0",
+    "created_on": "2024-01-01T12:00:00Z"
+  }
+
+  // player_sessions
+  {
+    "_id": "ObjectId",
+    "player_id": "ObjectId",
+    "event_type": "login_failed",
+    "event_time": "2024-01-01T12:00:00Z",
+    "ip_address": "192.168.1.1",
+    "description": "Invalid password attempt",
+    "created_on": "2024-01-01T12:00:00Z"
+  }
+
+
+  // game_action_logs
+  {
+    "_id": "ObjectId",
+    "player_id": "ObjectId",
+    "game_id": "ObjectId",
+    "action": "move",
+    "details": {
+      "from": "A",
+      "to": "B"
+    },
+    "timestamp": "2024-01-01T12:00:10Z",
+    "created_on": "2024-01-01T12:00:00Z"
+  }
+
+  //  gameanalytics (if present)
+  {
+    "_id": "ObjectId",
+    "player_id": "ObjectId",
+    "game_id": "ObjectId",
+    "analytics_type": "completion_time",
+    "value": 85.5,
+    "recorded_at": "2024-01-01T12:01:30Z"
+  }
+
