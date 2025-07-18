@@ -90,6 +90,7 @@ class NumericStatusUpdateRequest(BaseModel):
 class AdminStatusUpdateRequest(NumericStatusUpdateRequest):
     """Request model for admin status updates"""
     id: str = Field(..., description="Admin ID")
+    
 
 class ForgotPasswordRequest(BaseModel):
     """Request model for forgot password - send OTP"""

@@ -537,6 +537,7 @@ async def update_admin_status(
         
         # Check if admin exists
         existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}})
+        print(existing_admin,"existing_admin")
         if not existing_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
