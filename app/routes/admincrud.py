@@ -1,7 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Body
+from gettext import find
+import imp
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Body,Request
 from bson import ObjectId
+from enum import Enum
+from app.core.enums import PlayerType
 from typing import List, Optional, Dict, Any, Union, Annotated
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.core.enums import Status
 from app.db.mongo import get_database
 from app.auth.cookie_auth import verify_admin
 from app.models.adminschemas import AdminResponse, AdminStatusUpdateRequest, PaginationResponse, ListResponse, AdminCreateRequest, AdminUpdateRequest, AdminGetRequest
@@ -9,6 +14,7 @@ from app.utils.prefix import generate_prefix
 from app.utils.upload_handler import profile_pic_handler
 from passlib.context import CryptContext
 from datetime import datetime
+from app.models.roles import GridDataItem
 import logging
 import traceback
 from email_validator import validate_email, EmailNotValidError
@@ -44,7 +50,7 @@ async def list_admins(
         search_string = params.get("search_string")
         status = params.get("status")
         role = params.get("role")
-        query: Dict[str, Any] = {"player_type": {"$in": [0, 1]}}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+        query: Dict[str, Any] = {"player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}}  # Allow both SUPERADMIN and ADMINEMPLOYEE
 
         if search_string :
             matching_roles = await db.roles.find({
@@ -66,11 +72,11 @@ async def list_admins(
         
         if role:
             if role.lower() in ["admin", "manager"]:
-                query["player_type"] = {"$in": [0, 1]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+                query["player_type"] = {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
             elif role.lower() == "superadmin":
-                query["player_type"] = 0
+                query["player_type"] = PlayerType.SUPERADMIN
             elif role.lower() == "player":
-                query["player_type"] = 2
+                query["player_type"] = PlayerType.PLAYER
             else:
                 # Check if role is an ObjectId (role ID)
                 try:
@@ -139,6 +145,24 @@ async def list_admins(
         logger.error(f"List admins failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to list admins")
 
+@router.get("/get-role-dependency",response_model=List[GridDataItem])
+async def get_role_dependency(
+   db: AsyncIOMotorDatabase = Depends(get_database), current_admin : dict = Depends(verify_admin)
+):
+    try: 
+        role_docs = await db.roles.find({"status" :Status.ACTIVE.value }).to_list(length=None)
+        result = []
+        for item in role_docs:
+            result.append(GridDataItem(
+                id=str(item["_id"]),
+                role_name=item.get("role_name", ""),
+                status=item.get("status")
+            ))
+        return result
+    except Exception as e:
+        logger.error(f"List admins failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list roles") 
+        
 # 2.1. GET /admins/{admin_id} - Get specific admin by ID from URL parameter
 @router.get("/admins/{admin_id}", response_model=AdminResponse)
 async def get_admin_by_id(
@@ -149,7 +173,7 @@ async def get_admin_by_id(
     """Get a specific admin by ID from URL parameter."""
     try:
         #admin_id = params.get("admin_id")
-        admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [0, 1]}})
+        admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}})
         if not admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
@@ -317,7 +341,7 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
     try:
         admin_id = admin_data.id
         # Check if admin exists (SUPERADMIN or ADMINEMPLOYEE)
-        existing_user = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [0, 1]}})
+        existing_user = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}})
         if not existing_user:
             # Check if user exists but has different playertype
             user_exists = await db.players.find_one({"_id": ObjectId(admin_id)})
@@ -365,7 +389,7 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
                     raise HTTPException(status_code=400, detail="Email already exists")
         
         # Determine new playertype and is_admin if role is provided
-        new_playertype = existing_user.get("player_type", 1)  # Keep existing if no role change
+        new_playertype = existing_user.get("player_type", PlayerType.ADMINEMPLOYEE)  # Keep existing if no role change
         new_is_admin = existing_user.get("is_admin", True)   # Keep existing if no role change
         
         # Get role document if role is provided
@@ -512,7 +536,7 @@ async def update_admin_status(
         admin_id = status_data.id
         
         # Check if admin exists
-        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [0, 1]}})
+        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}})
         if not existing_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
@@ -551,7 +575,7 @@ async def delete_admin(
     try:
         admin_id = admin_data.admin_id
         # Check if admin exists
-        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [0, 1]}})
+        existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}})
         if not existing_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         
