@@ -50,7 +50,7 @@ async def list_admins(
         status = params.get("status")
         role = params.get("role")
         query: Dict[str, Any] = {"player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}}  # Allow both SUPERADMIN and ADMINEMPLOYEE
-
+        print("search string ",search_string)
         if search_string :
             matching_roles = await db.roles.find({
                 "role_name": {"$regex": search_string, "$options": "i"}
@@ -67,7 +67,11 @@ async def list_admins(
             query["$or"] = search_conditions
         
         if status is not None:
-            query["is_active"] = bool(status)
+            try:
+                status = int(status)
+                query["is_active"] = bool(status)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid status parameter")
         
         if role:
             if role.lower() in ["admin", "manager"]:
@@ -125,7 +129,7 @@ async def list_admins(
                 created_at=admin.get("created_on", datetime.utcnow()),
                 last_login=admin.get("last_login")
             ))
-        
+            print("data ",data)
         total_pages = (total + count - 1) // count
         return ListResponse(
             data=data,
@@ -148,6 +152,7 @@ async def get_role_dependency(
    db: AsyncIOMotorDatabase = Depends(get_database), current_admin : dict = Depends(verify_admin)
 ):
     try: 
+        print("current admin ",current_admin)
         role_docs = await db.roles.find({"status" :Status.ACTIVE.value }).to_list(length=None)
         result = []
         for item in role_docs:
@@ -228,20 +233,20 @@ async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(Admi
             raise HTTPException(status_code=400, detail=f"Role ID '{admin_data.fk_role_id}' not found")
         
         # Determine playertype and is_admin based on role name
-        playertype = 1  # default to admin
+        player_type = 1  # default to admin
         is_admin = True
         
         role_name = role_doc.get("role_name", "")
         if role_name:
             role_name_lower = role_name.lower()
             if role_name_lower == "superadmin":
-                playertype = 0
+                player_type = 0
                 is_admin = True
             elif role_name_lower in ["admin", "manager"]:
-                playertype = 1
+                player_type = 1
                 is_admin = True
             elif role_name_lower == "player":
-                playertype = 2
+                player_type = 2
                 is_admin = False
         
         # Check for existing user (any playertype)
@@ -295,7 +300,7 @@ async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(Admi
             "player_prefix": player_prefix,
             "fk_role_id": role_object_id,
             "rolename": role_doc.get("role_name", ""),
-            "player_type": playertype,
+            "player_type": player_type,
             "is_admin": is_admin,
             "is_active": True,
             "is_verified": True,
@@ -525,16 +530,18 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
 # 5. PATCH /admins/status - Update admin status
 @router.patch("/admins/status")
 async def update_admin_status(
-    status_data: AdminStatusUpdateRequest,
+    status_data: AdminStatusUpdateRequest = Depends(decrypt_body(AdminStatusUpdateRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Update admin status."""
     try:
         admin_id = status_data.id
-        
+        print("admin_id ",admin_id)
+        print("status_data ",status_data)
         # Check if admin exists
         existing_admin = await db.players.find_one({"_id": ObjectId(admin_id), "player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}})
+        print(existing_admin,"existing_admin")
         if not existing_admin:
             raise HTTPException(status_code=404, detail="Admin not found")
         

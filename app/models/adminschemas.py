@@ -90,6 +90,8 @@ class NumericStatusUpdateRequest(BaseModel):
 class AdminStatusUpdateRequest(NumericStatusUpdateRequest):
     """Request model for admin status updates"""
     id: str = Field(..., description="Admin ID")
+    status: Literal[0, 1] = Field(..., description="Status: 0=inactive, 1=active")
+    
 
 class ForgotPasswordRequest(BaseModel):
     """Request model for forgot password - send OTP"""
@@ -104,3 +106,6 @@ class ResetPasswordRequest(BaseModel):
     email: str = Field(..., description="Email address")
     new_password: str = Field(..., min_length=6, description="New password (minimum 6 characters)")
     reset_token: str = Field(..., description="Password reset token") 
+    
+class FileDeleteRequest(BaseModel):
+    file_url_path: str = Field(..., description="File URL path")
