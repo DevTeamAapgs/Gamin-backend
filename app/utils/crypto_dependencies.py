@@ -59,7 +59,8 @@ def decrypt_data_param(
     try:
         decrypted_json = crypto.decrypt(data)
         return eval(decrypted_json)  
-    except Exception:
+    except Exception as e:
+        print(e,"errrrrrrrrrrrrrrr")
         raise HTTPException(status_code=400, detail="Failed to decrypt query payload")
 
 

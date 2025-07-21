@@ -9,6 +9,7 @@ from app.core.enums import Status
 from app.db.mongo import get_database
 from app.auth.cookie_auth import verify_admin
 from app.models.adminschemas import AdminResponse, AdminStatusUpdateRequest, PaginationResponse, ListResponse, AdminCreateRequest, AdminUpdateRequest, AdminGetRequest
+from app.schemas.game_configuration_schema import GameConfigurationGridResponse
 from app.utils.prefix import generate_prefix
 from app.utils.upload_handler import profile_pic_handler
 from passlib.context import CryptContext
@@ -32,38 +33,63 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 # 1. GET /admins - List all admins
-@router.get("/grid-list", response_model=ListResponse)
+@router.get("/grid-list", response_model=GameConfigurationGridResponse)
 async def list_admins(
     params: dict = Depends(decrypt_data_param),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
+    print(params,"params")
     try:
         page = int(params.get("page", 1))
         count = int(params.get("count", 10))
         search_string = params.get("search_string")
         status = params.get("status")
-        query: Dict[str, Any] = {} 
 
-        if search_string :
-            search_conditions: List[Dict[str, Any]] = [
+        query: Dict[str, Any] = {}
+
+        if search_string:
+            query["$or"] = [
                 {"game_name": {"$regex": search_string, "$options": "i"}},
             ]
-            
-            query["$or"] = search_conditions
-        
+
         if status is not None:
             query["status"] = bool(status)
-       
+
         skip = (page - 1) * count
-        total = await db.game_configuration.count_documents(query)
-        admins = await db.game_configuration.find(query).sort("created_on", -1).skip(skip).limit(count).to_list(length=count)
-        
-        
-        
+
+        pipeline = [
+            {"$match": query},
+            {
+                "$facet": {
+                    "results": [
+                        {"$sort": {"created_on": -1}},
+                        {"$skip": skip},
+                        {"$limit": count}
+                    ],
+                    "totalCount": [
+                        {"$count": "value"}
+                    ]
+                }
+            }
+        ]
+
+        result = await db.game_configuration.aggregate(pipeline).to_list(length=1)
+
+        if result:
+            response_data = {
+                "results": result[0]["results"],
+                "total": result[0]["totalCount"][0]["value"] if result[0]["totalCount"] else 0
+            }
+        else:
+            response_data = {"results": [], "total": 0}
+
+        return GameConfigurationGridResponse(**response_data)
+
     except Exception as e:
         logger.error(f"List admins failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to list admins")
+
 
 @router.get("/get-role-dependency",response_model=List[GridDataItem])
 async def get_role_dependency(

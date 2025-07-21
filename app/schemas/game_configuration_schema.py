@@ -21,7 +21,8 @@ class GameConfigurationUpdateSchema(BaseModel):
     game_banner: list[dict] = Field(default_factory=list, description="The description of the game")
     game_icon: dict = Field(default_factory=dict, description="The description of the game")
 
-class GameConfigurationGridResponse(BaseModel):
+
+class GameConfigurationResponse(BaseModel):
     id: Optional[PyObjectId] = Field(default_factory=ObjectId, alias="_id")
     game_name: str = Field(..., description="The name of the game")
     game_type: str = Field(..., description="The type of the game")
@@ -30,8 +31,22 @@ class GameConfigurationGridResponse(BaseModel):
     game_icon: dict = Field(default_factory=dict, description="The description of the game")
     status: str = Field(..., description="The status of the game")
 
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "populate_by_name": True,
+        "json_encoders": {
+            ObjectId: str
+        }
+    }
+
+
+class GameConfigurationGridResponse(BaseModel):
+    results: List[GameConfigurationResponse]
+    pagination: int
+
 class GameConfigurationStatusUpdateSchema(BaseModel):
     id: str = Field(..., description="The id of the game")
     status: str = Field(..., description="The status of the game")
+
 
 

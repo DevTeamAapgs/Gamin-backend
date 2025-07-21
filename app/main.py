@@ -14,7 +14,7 @@ from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.middleware.encryption_middleware import ResponseEncryptionMiddleware
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
 # Import routes
-from app.routes import auth, player, game, admin, socket, roles, admincrud, common
+from app.routes import auth, player, game, admin, socket, roles, admincrud, common, gaming_configuration_route
 
 from app.utils.crypto import AESCipher
 
@@ -157,7 +157,7 @@ def custom_openapi():
         for method in openapi_schema["paths"][path]:
             if method.lower() in ["get", "post", "put", "delete", "patch"]:
                 endpoint = openapi_schema["paths"][path][method.lower()]
-                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin","Roles"] for tag in endpoint["tags"]):
+                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin","Roles","Gaming Configuration"] for tag in endpoint["tags"]):
                     if "parameters" not in endpoint:
                         endpoint["parameters"] = []
                         endpoint["parameters"].append({"$ref": "#/components/parameters/XPlaintext"})
@@ -196,6 +196,7 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])
 app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
 app.include_router(admincrud.router, prefix="/api/v1/admincrud", tags=["Admin CRUD"])
+app.include_router(gaming_configuration_route.router, prefix="/api/v1/gaming-configuration", tags=["Gaming Configuration"])
 app.include_router(common.router, prefix="/api/v1", tags=["Common"])
 
 
