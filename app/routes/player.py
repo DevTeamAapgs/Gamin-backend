@@ -1,7 +1,7 @@
 import email
 from fastapi import APIRouter, HTTPException, Depends, Request, Body, Query, status, Body, UploadFile, File, Form, Request
 from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse, PlayerCreate, PlayerListResponse
-from app.models.adminschemas import NumericStatusUpdateRequest
+from app.schemas.admin_curd_schemas import NumericStatusUpdateRequest
 from app.models.player import Player
 from app.auth.cookie_auth import get_current_user
 from app.auth.cookie_auth import get_current_user

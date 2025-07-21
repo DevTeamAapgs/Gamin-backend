@@ -8,10 +8,10 @@ import json
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models.roles import (
-    MenuItemModel, MenusubmenuAndPermission, PermissionSubmenuModel,  RolesModel, RoleCreate, RoleUpdate, RolePatch, RoleResponse,
-    GridDataRequest, GridDataResponse, GridDataItem, PermissionDetails
+from app.models.roles_models import (
+    MenuItemModel, MenusubmenuAndPermission, PermissionSubmenuModel,  RolesModel, PermissionDetails
 )
+from app.schemas.roles_schemas import (GridDataResponse,RoleResponse,GridDataItem ,RoleCreate, RoleUpdate, RolePatch,)
 from app.models.menu import (
     MenuModel, MenuItem, MenuGroup, MenuQuery, PermissionSchema,
     MenuSchema, MenuPermissionSaveAction, PermissionsSchemaGridList

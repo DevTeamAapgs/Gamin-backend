@@ -9,7 +9,7 @@ from app.models.player import Player
 from pathlib import Path
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.utils.crypto_dependencies import decrypt_body, decrypt_data_param
-from app.models.adminschemas import FileDeleteRequest
+from app.schemas.admin_curd_schemas import FileDeleteRequest
 
 
 logger = logging.getLogger(__name__)

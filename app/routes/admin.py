@@ -17,7 +17,7 @@ import logging
 from typing import Annotated, Callable, Optional, List
 from passlib.context import CryptContext
 from bson import ObjectId
-from app.models.adminschemas import TokenResponse, AdminResponse
+from app.schemas.admin_curd_schemas import TokenResponse, AdminResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models.player import CustomPlayerResponse, MenuItem, PermissionItem
 from app.core.enums import PlayerType

@@ -25,7 +25,8 @@ from pathlib import Path
 from app.core.enums import PlayerType
 
 from app.utils.crypto_dependencies import decrypt_body
-from app.models.adminschemas import TokenResponse, ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
+from app.schemas.admin_curd_schemas import TokenResponse
+from app.schemas.admin_curd_schemas import ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
 from pathlib import Path
 from bson import ObjectId
 from passlib.context import CryptContext

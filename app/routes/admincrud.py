@@ -9,12 +9,13 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.enums import Status
 from app.db.mongo import get_database
 from app.auth.cookie_auth import verify_admin
-from app.models.adminschemas import AdminResponse, AdminStatusUpdateRequest, PaginationResponse, ListResponse, AdminCreateRequest, AdminUpdateRequest, AdminGetRequest
 from app.utils.prefix import generate_prefix
 from app.utils.upload_handler import profile_pic_handler
 from passlib.context import CryptContext
 from datetime import datetime
-from app.models.roles import GridDataItem
+from app.schemas.roles_schemas import GridDataItem
+from app.schemas.admin_curd_schemas import AdminResponse, PaginationResponse, ListResponse
+from app.schemas.admin_curd_schemas import AdminStatusUpdateRequest, AdminCreateRequest, AdminUpdateRequest, AdminGetRequest
 import logging
 import traceback
 from email_validator import validate_email, EmailNotValidError
