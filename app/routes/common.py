@@ -8,6 +8,9 @@ import logging
 from app.models.player import Player
 from pathlib import Path
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.utils.crypto_dependencies import decrypt_body, decrypt_data_param
+from app.models.adminschemas import FileDeleteRequest
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -105,18 +108,18 @@ async def cleanup_user_temp_files(user_id: str, existing_user: dict):
         logger.error(f"Error cleaning up temp files for user {user_id}: {e}")
 
 # DELETE /common/file-upload - Delete file
-@router.delete("/common/file-upload")
+@router.post("/common/delete-file-upload")
 async def delete_file(
-    file_url_path: str,
+    admin_data: FileDeleteRequest = Depends(decrypt_body(FileDeleteRequest)),
     current_user: Player = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    print(Path("public/uploads/file_686b92d57248234e88b16a60_ae41d855.png").exists())
-    print(file_url_path)
-    print(Path(file_url_path).exists())
+   
     """Delete file for the current user."""
     try:
         # Get current user's ID
+        file_url_path = admin_data.file_url_path
+        print("file_url_path ",file_url_path)
         user_id = str(current_user.id)
         
         # Check if user exists
