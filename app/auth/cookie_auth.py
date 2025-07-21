@@ -9,6 +9,8 @@ from app.core.enums import PlayerType
 from bson import ObjectId
 import logging
 
+from app.schemas.player import PlayerInfoSchema
+
 logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
 
@@ -62,7 +64,7 @@ cookie_auth = CookieAuth()
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> Player:
+) -> PlayerInfoSchema:
     """Get current user from token (cookie or header)"""
     token = cookie_auth.get_token(request, credentials)
     
@@ -103,7 +105,7 @@ async def get_current_user(
     
     # Convert to Player object
     player_doc["id"] = str(player_doc["_id"])
-    return Player(**player_doc)
+    return PlayerInfoSchema(**player_doc)
 
 async def get_current_user_optional(
     request: Request,

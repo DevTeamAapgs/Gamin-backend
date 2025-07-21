@@ -5,11 +5,12 @@ from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import List, Dict, Any,Optional
-from app.schemas.player import PlayerCreate, PlayerLogin, PlayerResponse
-from app.models.player import Player,PlayerResponse
+from app.schemas.player import AdminLogin, PlayerCreate, PlayerLogin, PlayerResponse
+from app.models.player import Player, PlayerCreation,PlayerResponse
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import get_current_user, get_current_user_optional
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
+from app.utils.prefix import generate_prefix
 from app.utils.upload_handler import profile_pic_handler
 from app.utils.email_utils import email_manager
 from app.db.mongo import get_database
@@ -91,28 +92,33 @@ async def register_player(
         
         if existing_player:
             raise HTTPException(status_code=400, detail="Player Details already exists")
-        
+        player_prefix = await generate_prefix("player", 4, db=db)
+
+
         # Create new player
-        player = Player(**{
+        player = PlayerCreation(**{
             "username": player_data.username,
             "email": player_data.email,
+            "password_hash": get_password_hash(player_data.password),
             "device_fingerprint": device_fingerprint,
-            "ip_address": client_ip
+            "ip_address": client_ip,
+            "player_prefix":player_prefix
         })
         
         
         # Save to database
         result = await db.players.insert_one(player.model_dump())
-        player.id = result.inserted_id
+
+        player_id = result.inserted_id
         
         # Create session and tokens with enhanced security details
         session = await token_manager.create_player_session(
-            player, device_fingerprint or "unknown", client_ip or "unknown"
+           { "id":player_id, **player.model_dump()}, device_fingerprint or "unknown", client_ip or "unknown"
         )
         
         print("session",session)
         # Generate tokens
-        access_token = token_manager.create_access_token({"sub": str(player.id), "wallet": player.wallet_address })
+        access_token = token_manager.create_access_token({"sub": str(player_id), "wallet": player.wallet_address })
         refresh_token = session.refresh_token
         
         logger.info(f"New player registered: {player.username} from IP: {client_ip} with device: {device_fingerprint}")
@@ -136,7 +142,7 @@ async def register_player(
         raise HTTPException(status_code=500, detail="Registration failed")
 
 @router.post("/login", response_model=TokenResponse)
-async def login_player(  request: Request, response: Response, player_data: PlayerLogin = Depends(decrypt_body(PlayerLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
+async def login_player(  request: Request, response: Response, player_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Login existing player."""
     try:
         # Access request details set by SecurityLoggingMiddleware
@@ -146,47 +152,45 @@ async def login_player(  request: Request, response: Response, player_data: Play
         
         
         # Find player by wallet address
-        player_doc = await db.players.find_one({"wallet_address": player_data.wallet_address})
+        player_doc = await db.players.find_one({"email": player_data.username , "player_type":PlayerType.PLAYER})
         if not player_doc:
             raise HTTPException(status_code=404, detail="Player not found")
-        
         player = Player(**player_doc)
         
         # Check if player is banned
         if player.is_banned:
             raise HTTPException(status_code=403, detail="Account is banned")
-        
+
         # Update last login and IP
         await db.players.update_one(
-            {"_id": player.id},
+            {"_id": player_doc.get("_id")},
             {
                 "$set": {
-                    "last_login": datetime.utcnow(),
+                        "last_login": datetime.utcnow(),
                     "ip_address": client_ip or "unknown",
                     "device_fingerprint": device_fingerprint
                 }
             }
         )
-        
+
         # Create new session
         session = await token_manager.create_player_session(
-            player, device_fingerprint or "unknown", client_ip or "unknown"
+            {"id":player_doc.get("_id"), **player_doc}, device_fingerprint or "unknown", client_ip or "unknown"
         )
-        
         # Generate tokens
-        access_token = token_manager.create_access_token({"sub": str(player.id), "wallet": player.wallet_address})
+        access_token = token_manager.create_access_token({"sub": str(player_doc.get("_id")), "wallet": player.wallet_address})
         refresh_token = session.refresh_token
-        
+
         logger.info(f"Player logged in: {player.username}")
-        
+
         # Set cookies
         set_auth_cookies(response, access_token, refresh_token)
-        
         token_response = TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in=settings.access_token_expire_minutes * 60
         )
+        print("player_doc7")    
         return token_response
         
     except HTTPException:
@@ -212,11 +216,12 @@ async def refresh_token(request: Request, response: Response, db: AsyncIOMotorDa
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         
         player_id = payload.get("sub")
+        print("player_id",player_id)
         if not player_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
         
         # Get player
-        player_doc = await db.players.find_one({"_id": player_id})
+        player_doc = await db.players.find_one({"_id":ObjectId(player_id)})
         if not player_doc:
             raise HTTPException(status_code=404, detail="User not found")
         
@@ -227,8 +232,8 @@ async def refresh_token(request: Request, response: Response, db: AsyncIOMotorDa
             raise HTTPException(status_code=403, detail="Account is banned")
         
         # Generate new tokens
-        access_token = token_manager.create_access_token({"sub": str(player.id), "wallet": player.wallet_address})
-        new_refresh_token = token_manager.create_refresh_token({"sub": str(player.id), "wallet": player.wallet_address})
+        access_token = token_manager.create_access_token({"sub": str(player_doc.get("_id")), "wallet": player.wallet_address})
+        new_refresh_token = token_manager.create_refresh_token({"sub": str(player_doc.get("_id")), "wallet": player.wallet_address})
         
         # Update session
         await db.sessions.update_one(
@@ -312,7 +317,7 @@ async def get_current_player(request: Request, current_user: dict = Depends(get_
         print("player",player)
         
         response = PlayerResponse(
-            id=str(player.id),
+            id=str(player_doc.get("_id")),
             wallet_address=player.wallet_address,
             username=player.username,
             email=player.email,

@@ -1,6 +1,7 @@
 import email
 from fastapi import APIRouter, HTTPException, Depends, Request, Body, Query, status, Body, UploadFile, File, Form, Request
-from app.schemas.player import PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse, PlayerCreate, PlayerListResponse
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.schemas.player import PlayerInfoSchema, PlayerUpdate, PlayerResponse, PlayerBalance, PlayerStats, TransactionResponse, PlayerCreate, PlayerListResponse
 from app.models.adminschemas import NumericStatusUpdateRequest
 from app.models.player import Player
 from app.auth.cookie_auth import get_current_user
@@ -51,35 +52,21 @@ async def get_role_id_for_mapping(role_name, db):
         raise HTTPException(status_code=400, detail=f"Role '{role_name}' not found")
 
 @router.get("/profile", response_model=PlayerResponse)
-async def get_player_profile(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_player_profile(request: Request, current_user: PlayerInfoSchema  = Depends(get_current_user),db:AsyncIOMotorDatabase = Depends(get_database)):
     """Get player profile information."""
     try:
-        # Get player from current user
-        player_id = current_user.get("sub")
-        if not player_id:
-            raise HTTPException(status_code=401, detail="Invalid token payload")
-        
-        db = get_database()
-        
-        # Get player
-        player_doc = await db.players.find_one({"_id": ObjectId(str(current_user.id))})
-        if not player_doc:
-            raise HTTPException(status_code=404, detail="Player not found")
-        
-        player = Player(**player_doc)
-        
+
         response = PlayerResponse(
-            id=str(player.id),
-            wallet_address=player.wallet_address,
-            username=player.username,
-            email=player.email,
-            token_balance=player.token_balance,
-            total_games_played=player.total_games_played,
-            total_tokens_earned=player.total_tokens_earned,
-            total_tokens_spent=player.total_tokens_spent,
-            is_active=player.is_active,
-            created_at=player.created_at,
-            last_login=player.last_login
+            id=str(current_user.id),    
+            player_prefix=current_user.player_prefix,
+            player_type=current_user.player_type,
+            username=current_user.username,
+            email=current_user.email,
+            token_balance=current_user.token_balance,
+            total_games_played=current_user.total_games_played,
+            total_tokens_earned=current_user.total_tokens_earned,
+            total_tokens_spent=current_user.total_tokens_spent,
+            last_login=current_user.last_login
         )
         return response
         
@@ -88,6 +75,7 @@ async def get_player_profile(request: Request, current_user: dict = Depends(get_
     except Exception as e:
         logger.error(f"Get player profile failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to get player profile")
+
 
 @router.put("/profile", response_model=PlayerResponse)
 async def update_player_profile(

@@ -3,6 +3,7 @@ from bson import ObjectId
 from datetime import datetime
 from app.db.mongo import get_database
 from app.auth.cookie_auth import get_current_user
+from app.schemas.player import PlayerInfoSchema
 from app.utils.upload_handler import FileUploadHandler
 import logging
 from app.models.player import Player
@@ -17,7 +18,7 @@ file_handler = FileUploadHandler()
 @router.post("/common/file-upload")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: Player = Depends(get_current_user),
+    current_user: PlayerInfoSchema = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
@@ -108,7 +109,7 @@ async def cleanup_user_temp_files(user_id: str, existing_user: dict):
 @router.delete("/common/file-upload")
 async def delete_file(
     file_url_path: str,
-    current_user: Player = Depends(get_current_user),
+    current_user: PlayerInfoSchema = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     print(Path("public/uploads/file_686b92d57248234e88b16a60_ae41d855.png").exists())

@@ -107,18 +107,18 @@ class TokenManager:
             logger.error(f"Layered token verification failed: {e}")
             return None
 
-    async def create_player_session(self, player: Player, device_fingerprint: str, ip_address: str) -> PlayerSession:
+    async def create_player_session(self, player, device_fingerprint: str, ip_address: str) -> PlayerSession:
         db = get_database()
 
         # Ensure player has an ID
-        if player.id is None:
+        if player.get("id") is None:
             raise Exception("Player ID cannot be None")
 
-        access_token = self.create_access_token({"sub": str(player.id), "wallet": player.wallet_address})
-        refresh_token = self.create_refresh_token({"sub": str(player.id), "wallet": player.wallet_address})
+        access_token = self.create_access_token({"sub": str(player.get("id")), "wallet": player.get("wallet_address")   })
+        refresh_token = self.create_refresh_token({"sub": str(player.get("id")), "wallet": player.get("wallet_address")})
 
         session = PlayerSession(**{
-            "player_id": player.id,  
+            "player_id": player.get("id"),  
             "token_hash": hashlib.sha256(access_token.encode()).hexdigest(),
             "refresh_token": refresh_token,
             "device_fingerprint": device_fingerprint,

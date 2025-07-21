@@ -32,14 +32,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 # 1. GET /admins - List all admins
-@router.get("/admins", response_model=ListResponse)
+@router.get("/grid-list", response_model=ListResponse)
 async def list_admins(
     params: dict = Depends(decrypt_data_param),
-    #page: int = Query(1, ge=1),
-    #count: int = Query(10, ge=1, le=100),
-    #search_string: Optional[str] = Query(None),
-    #status: Optional[int] = Query(None),
-    #role: Optional[str] = Query(None),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -48,96 +43,23 @@ async def list_admins(
         count = int(params.get("count", 10))
         search_string = params.get("search_string")
         status = params.get("status")
-        role = params.get("role")
-        query: Dict[str, Any] = {"player_type": {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}}  # Allow both SUPERADMIN and ADMINEMPLOYEE
+        query: Dict[str, Any] = {} 
 
         if search_string :
-            matching_roles = await db.roles.find({
-                "role_name": {"$regex": search_string, "$options": "i"}
-            }).to_list(length=10)
-            
-            role_ids = [role["_id"] for role in matching_roles]
             search_conditions: List[Dict[str, Any]] = [
-                {"username": {"$regex": search_string, "$options": "i"}},
-                {"email": {"$regex": search_string, "$options": "i"}}
+                {"game_name": {"$regex": search_string, "$options": "i"}},
             ]
             
-            if role_ids:
-                search_conditions.append({"fk_role_id": {"$in": role_ids}})
             query["$or"] = search_conditions
         
         if status is not None:
-            query["is_active"] = bool(status)
-        
-        if role:
-            if role.lower() in ["admin", "manager"]:
-                query["player_type"] = {"$in": [PlayerType.ADMINEMPLOYEE,PlayerType.SUPERADMIN]}  # Allow both SUPERADMIN and ADMINEMPLOYEE
-            elif role.lower() == "superadmin":
-                query["player_type"] = PlayerType.SUPERADMIN
-            elif role.lower() == "player":
-                query["player_type"] = PlayerType.PLAYER
-            else:
-                # Check if role is an ObjectId (role ID)
-                try:
-                    role_object_id = ObjectId(role)
-                    # Direct comparison with fk_role_id
-                    query["fk_role_id"] = role_object_id
-                except Exception:
-                    # If not an ObjectId, search by role name
-                    role_doc = await db.roles.find_one({"role_name": role})
-                    if role_doc:
-                        query["fk_role_id"] = role_doc["_id"]
-                    else:
-                        return ListResponse(
-                            data=[],
-                            pagination=PaginationResponse(
-                                page=page,
-                                limit=count,
-                                total=0,
-                                pages=0,
-                                has_next=False,
-                                has_prev=False
-                            )
-                        )
-
+            query["status"] = bool(status)
+       
         skip = (page - 1) * count
-        total = await db.players.count_documents(query)
-        admins = await db.players.find(query).sort("updated_on", -1).skip(skip).limit(count).to_list(length=count)
+        total = await db.game_configuration.count_documents(query)
+        admins = await db.game_configuration.find(query).sort("created_on", -1).skip(skip).limit(count).to_list(length=count)
         
-        data = []
-        for admin in admins:
-            role_name = None
-            if admin.get("fk_role_id"):
-                role_doc = await db.roles.find_one({"_id": admin["fk_role_id"]})
-                role_name = role_doc["role_name"] if role_doc else None
-            
-            data.append(AdminResponse(
-                id=str(admin["_id"]),
-                username=admin["username"],
-                email=admin.get("email", ""),
-                is_admin=True,
-                is_active=admin.get("is_active", True),
-                status=admin.get("status", 1),
-                fk_role_id=str(admin["fk_role_id"]) if admin.get("fk_role_id") else None,
-                
-                wallet_address=admin.get("wallet_address"),
-                profile_photo=admin.get("profile_photo"),
-                created_at=admin.get("created_on", datetime.utcnow()),
-                last_login=admin.get("last_login")
-            ))
         
-        total_pages = (total + count - 1) // count
-        return ListResponse(
-            data=data,
-            pagination=PaginationResponse(
-                page=page,
-                limit=count,
-                total=total,
-                pages=total_pages,
-                has_next=page < total_pages,
-                has_prev=page > 1
-            )
-        )
         
     except Exception as e:
         logger.error(f"List admins failed: {e}")
@@ -202,7 +124,7 @@ async def get_admin_by_id(
         raise HTTPException(status_code=500, detail="Failed to get admin")
 
 # 3. POST /admins - Create user
-@router.post("/admins")
+@router.post("/gaming-configuration")
 async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(AdminCreateRequest)),
     current_admin: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
