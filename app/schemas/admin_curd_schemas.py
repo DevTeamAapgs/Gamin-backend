@@ -45,7 +45,6 @@ class AdminResponse(BaseModel):
     status: Optional[int] = None
     fk_role_id: Optional[str] = None
     role_name: Optional[str] = None
-    player_prefix: Optional[str] = None
     profile_photo: Optional[Dict[str, str | float]] = None
     created_at: datetime = Field(..., description="Account creation timestamp")
     last_login: Optional[datetime] = None

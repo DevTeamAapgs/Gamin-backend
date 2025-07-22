@@ -1,5 +1,5 @@
 from gettext import find
-import imp
+from app.utils.upload_handler import move_file_from_temp_to_uploads
 from unittest import result
 from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Body,Request
 from bson import ObjectId, objectid
@@ -22,6 +22,7 @@ import traceback
 from email_validator import validate_email, EmailNotValidError
 from pathlib import Path
 import shutil
+from app.utils.pyobjectid import PyObjectId
 from app.utils.crypto_dependencies import decrypt_body, decrypt_data_param
 
 logger = logging.getLogger(__name__)
@@ -135,8 +136,7 @@ async def list_admins(
                 is_active=admin.get("is_active", True),
                 status=admin.get("status", 1),
                 fk_role_id=str(admin["fk_role_id"]) if admin.get("fk_role_id") else None,
-                
-                wallet_address=admin.get("wallet_address"),
+                role_name=admin.get("role_name"),
                 profile_photo=admin.get("profile_photo"),
                 created_at=admin.get("created_on", datetime.utcnow()),
                 last_login=admin.get("last_login")
@@ -226,7 +226,6 @@ async def get_admin_by_id(
             status=admin_data.get("status", 1),
             fk_role_id=str(admin_data["fk_role_id"]) if admin_data.get("fk_role_id") else None,
             role_name=admin_data.get("role_name"),
-            player_prefix=admin_data.get("player_prefix"),
             profile_photo=admin_data.get("profile_photo"),
             created_at=admin_data.get("created_on", datetime.utcnow()),
             last_login=admin_data.get("last_login")
@@ -286,28 +285,7 @@ async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(Admi
         # Handle profile picture if provided
         profile_photo = None
         if admin_data.profile_photo:
-            uploadfilename = admin_data.profile_photo.get("uploadfilename")
-            uploadurl = admin_data.profile_photo.get("uploadurl")
-            filesize_kb = admin_data.profile_photo.get("filesize_kb")
-            
-            if uploadfilename and uploadurl and filesize_kb is not None and isinstance(uploadurl, str) and "temp_uploads" in uploadurl:
-                # Check if file exists in temp_uploads
-                temp_file_path = Path("uploadurl")
-                uploads_file_path = Path("public/uploads") / str(uploadfilename)
-                
-                if not temp_file_path.exists():
-                    raise HTTPException(status_code=404, detail="Profile picture file not found in temp_uploads")
-                
-                # Move file from temp_uploads to uploads
-                shutil.move(str(temp_file_path), str(uploads_file_path))
-                logger.info(f"Profile picture moved from temp_uploads to uploads: {uploadfilename}")
-                
-                # Create new profile photo object with updated URL
-                profile_photo = {
-                    "uploadfilename": uploadfilename,
-                    "uploadurl": f"public/uploads/{uploadfilename}",
-                    "filesize_kb": filesize_kb
-                }
+            profile_photo = move_file_from_temp_to_uploads(admin_data.profile_photo)
         
         # Create user document
         user_doc = {
@@ -320,10 +298,6 @@ async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(Admi
             "is_admin": is_admin,
             "is_active": True,
             "is_verified": True,
-            "token_balance": 0,
-            "total_games_played": 0,
-            "total_tokens_earned": 0,
-            "total_tokens_spent": 0,
             "created_at": created_at,
             "created_on": created_at,
             "updated_on": created_at,
@@ -420,52 +394,8 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
         
         # Handle profile picture
         profile_photo = None  # Default to None (no profile photo)
-        
         if admin_data.profile_photo:
-            # New profile photo provided
-            uploadfilename = admin_data.profile_photo.get("uploadfilename")
-            uploadurl = admin_data.profile_photo.get("uploadurl")
-            filesize_kb = admin_data.profile_photo.get("filesize_kb")
-            
-            if uploadfilename and uploadurl and filesize_kb is not None and isinstance(uploadurl, str) and "temp_uploads" in uploadurl:
-                # Check if file exists in temp_uploads or uploads
-                temp_file_path = Path("public/temp_uploads") / str(uploadfilename)
-                uploads_file_path = Path("public/uploads") / str(uploadfilename)
-                
-                # Determine if file is in temp_uploads and needs to be moved
-                file_in_temp = temp_file_path.exists()
-                file_in_uploads = uploads_file_path.exists()
-                
-                if not file_in_temp and not file_in_uploads:
-                    raise HTTPException(status_code=404, detail="Profile picture file not found in temp_uploads or uploads")
-                
-                # If file is in temp_uploads, move it to uploads
-                if file_in_temp:
-                    # Delete old profile picture if exists
-                    if existing_user.get("profile_photo"):
-                        try:
-                            old_file_path = existing_user["profile_photo"]["uploadurl"]
-                            deleted = profile_pic_handler.delete_file_by_path(old_file_path)
-                            if deleted:
-                                logger.info(f"Old profile picture deleted: {old_file_path}")
-                            else:
-                                logger.warning(f"Old profile picture file not found: {old_file_path}")
-                        except Exception as e:
-                            logger.error(f"Error deleting old profile picture: {e}")
-                    
-                    # Move file from temp_uploads to uploads
-                    shutil.move(str(temp_file_path), str(uploads_file_path))
-                    logger.info(f"Profile picture moved from temp_uploads to uploads: {uploadfilename}")
-                    
-                    # Clean up any remaining temp files for this user
-                    await cleanup_user_temp_files(str(existing_user["_id"]), existing_user)
-                
-                # Create new profile photo object with updated URL
-                profile_photo = {
-                    "uploadfilename": uploadfilename,
-                    "uploadurl": f"public/uploads/{uploadfilename}",
-                    "filesize_kb": filesize_kb
-                }
+            profile_photo = move_file_from_temp_to_uploads(admin_data.profile_photo)
         else:
             # No profile photo provided - delete existing one if it exists
             if existing_user.get("profile_photo"):
