@@ -26,6 +26,8 @@ class FileUploadHandler:
 
     def validate_file(self, file: UploadFile) -> bool:
         try:
+            if not file.filename or not isinstance(file.filename, str):
+                raise HTTPException(status_code=400, detail="No filename provided")
             file_extension = Path(file.filename).suffix.lower()
             if file_extension not in self.allowed_extensions:
                 raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed: {', '.join(self.allowed_extensions)}")
@@ -40,6 +42,10 @@ class FileUploadHandler:
 
     def validate_file_size(self, file_path: Path) -> bool:
         try:
+            if file_path is None:
+                return False
+            if isinstance(file_path, str):
+                file_path = Path(file_path)
             size = file_path.stat().st_size
             if size > self.max_file_size:
                 file_path.unlink()
@@ -51,7 +57,7 @@ class FileUploadHandler:
 
     def save_temp_file(self, file: UploadFile) -> Path:
         try:
-            if not file.filename:
+            if not file.filename or not isinstance(file.filename, str):
                 raise HTTPException(status_code=400, detail="No filename provided")
             ext = Path(file.filename).suffix.lower()
             temp_filename = f"{uuid.uuid4()}{ext}"
@@ -67,6 +73,8 @@ class FileUploadHandler:
     async def upload_to_temp(self, file: UploadFile, user_id: str, prefix: str = "file") -> Dict[str, Any]:
         try:
             self.validate_file(file)
+            if not file.filename or not isinstance(file.filename, str):
+                raise HTTPException(status_code=400, detail="No filename provided")
             ext = Path(file.filename).suffix.lower()
             temp_filename = f"{prefix}_{user_id}_{uuid.uuid4().hex[:8]}{ext}"
             temp_path = self.temp_dir / temp_filename
@@ -83,7 +91,7 @@ class FileUploadHandler:
             logger.error(f"Upload to temp failed: {e}")
             raise HTTPException(status_code=500, detail="Upload failed")
 
-    def process_and_move_file(self, temp_path: Path, user_id: str, prefix: str = "file", process_image: bool = False, original_filename: str = None) -> Dict[str, Any]:
+    def process_and_move_file(self, temp_path: Path, user_id: str, prefix: str = "file", process_image: bool = False, original_filename: str = "") -> Dict[str, Any]:
         try:
             ext = temp_path.suffix.lower()
             uuid_part = temp_path.stem.split('_')[-1] if '_' in temp_path.stem else temp_path.stem
@@ -116,7 +124,7 @@ class FileUploadHandler:
     async def upload_file(self, file: UploadFile, user_id: str, prefix: str = "file", process_image: bool = False) -> Dict[str, Any]:
         try:
             self.validate_file(file)
-            original_filename = file.filename
+            original_filename = file.filename if file.filename is not None else ""
             temp_path = self.save_temp_file(file)
             return self.process_and_move_file(temp_path, user_id, prefix, process_image, original_filename)
         except Exception as e:
@@ -125,6 +133,8 @@ class FileUploadHandler:
 
     def delete_file_by_path(self, file_path: str) -> bool:
         try:
+            if not isinstance(file_path, str) or not file_path:
+                return False
             path_obj = Path(file_path.strip())
             if path_obj.is_absolute() and path_obj.exists():
                 path_obj.unlink()
@@ -151,6 +161,8 @@ class FileUploadHandler:
 
     def get_file_info(self, file_path: str) -> Optional[Dict[str, Any]]:
         try:
+            if not isinstance(file_path, str) or not file_path:
+                return None
             path_obj = Path(file_path.strip())
             if path_obj.is_absolute() and path_obj.exists():
                 file = path_obj
@@ -187,13 +199,65 @@ profile_pic_handler = FileUploadHandler(
 )
 
 document_handler = FileUploadHandler(
-    allowed_extensions=DocType,
+    allowed_extensions={e.value for e in DocType},
     max_file_size=10 * 1024 * 1024,
     file_type="document"
 )
 
 generic_file_handler = FileUploadHandler(
-    allowed_extensions=FileType,
+    allowed_extensions={e.value for e in FileType},
     max_file_size=20 * 1024 * 1024,
     file_type="generic"
 )
+
+def move_file_from_temp_to_uploads(file_info: dict) -> dict:
+    """
+    Checks if the file is in temp_uploads, moves it to uploads if needed, and returns the updated JSON structure.
+    Args:
+        file_info (dict): Dict with keys 'uploadfilename', 'uploadurl', 'filesize_kb'.
+    Returns:
+        dict: Updated file info with new uploadurl if moved.
+    Raises:
+        HTTPException: If file is expected in temp_uploads but not found.
+    """
+    from fastapi import HTTPException
+    from pathlib import Path
+    import shutil
+
+    uploadfilename = file_info.get("uploadfilename")
+    uploadurl = file_info.get("uploadurl")
+    filesize_kb = file_info.get("filesize_kb")
+
+    if not (isinstance(uploadfilename, str) and uploadfilename):
+        return file_info
+    if not (isinstance(uploadurl, str) and uploadurl):
+        return file_info
+
+    if (
+        filesize_kb is not None and
+        "temp_uploads" in uploadurl
+    ):
+        temp_file_path = Path(uploadurl)
+        uploads_file_path = Path(uploadurl.replace("temp_uploads", "uploads"))
+        if not temp_file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found in temp_uploads")
+        shutil.move(str(temp_file_path), str(uploads_file_path))
+        logger.info(f"File moved from temp_uploads to uploads: {uploadfilename}")
+        return {
+            "uploadfilename": uploadfilename,
+            "uploadurl": f"public/uploads/{uploadfilename}",
+            "filesize_kb": filesize_kb
+        }
+    elif (
+        filesize_kb is not None and
+        "uploads" in uploadurl
+    ):
+        # Already in uploads, just return as is
+        return {
+            "uploadfilename": uploadfilename,
+            "uploadurl": uploadurl,
+            "filesize_kb": filesize_kb
+        }
+    else:
+        # If info is incomplete, return as is (or you may choose to raise an error)
+        return file_info

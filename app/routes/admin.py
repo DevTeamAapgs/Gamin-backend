@@ -2,7 +2,7 @@ from fastapi import APIRouter, Body, HTTPException, Depends, Query, Request, Res
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.schemas.game import GameLevelUpdate, LeaderboardResponse
-from app.schemas.player import AdminLogin, AdminCreate
+from app.schemas.player import AdminLogin, AdminCreate, PlayerInfoSchema
 from app.auth.token_manager import token_manager
 from app.models.player import Player,PlayerResponse
 import time
@@ -170,7 +170,7 @@ async def create_admin(
 @router.get("/me", response_model=CustomPlayerResponse)
 async def get_current_player(
     request: Request,
-    current_user: Player = Depends(get_current_user),
+    current_user: PlayerInfoSchema = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     

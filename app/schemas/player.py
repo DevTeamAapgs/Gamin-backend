@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field
 from app.core.enums import PlayerType
+from app.models.base import BaseDocument, PyObjectId
 
 class RoleResponse(BaseModel):
     id: str = Field(..., alias="_id")
@@ -26,11 +28,30 @@ class PlayerUpdate(BaseModel):
     role: Optional[str]
 
 
+class PlayerInfoSchema(BaseDocument):
+    id: PyObjectId = Field(default_factory=ObjectId, alias="_id")
+    wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
+    username: str = Field(...)
+    email: Optional[str] = None
+    token_balance: Optional[float] = Field(default=0.0)
+    total_games_played: Optional[int] = Field(default=0)
+    total_tokens_earned: Optional[float] = Field(default=0.0)
+    total_tokens_spent: Optional[float] = Field(default=0.0)
+    is_banned: bool = Field(default=False) 
+    ban_reason: Optional[str] = None
+    device_fingerprint: Optional[str] = None
+    ip_address: Optional[str] = None
+    last_login: Optional[datetime] = None
+    player_type: int = Field(default=2)
+    profile_photo: Optional[str] = None
+    player_prefix: Optional[str] = None
+    fk_role_id: Optional[PyObjectId] = Field(default=None)
+
 
 class PlayerResponse(BaseModel):
-    id: str = Field(..., alias="_id")
-    wallet_address: Optional[str]
-    player_prefix: Optional[str]  # Add player prefix field
+    id: str 
+    wallet_address: Optional[str] = None
+    player_prefix: Optional[str] = None    # Add player prefix field
     # profile_photo dict fields:
     #   - uploadfilename: str
     #   - uploadurl: str
@@ -38,11 +59,12 @@ class PlayerResponse(BaseModel):
     #   - filesize_kb: float (file size in kilobytes, rounded to 2 decimals)
     profile_photo: Optional[Dict[str, str | int | float]] = None
     player_type: Optional[int] = Field(None, description="Player type: 0=SUPERADMIN, 1=ADMINEMPLOYEE, 2=PLAYER")
-    is_verified: Optional[bool]
+    is_verified: Optional[bool] = None
     token_balance: Optional[int]
     total_games_played: Optional[int]
     total_tokens_earned: Optional[int]
-    created_at: Optional[datetime]
+    username: Optional[str]
+    email: Optional[EmailStr]
     last_login: Optional[datetime]
 
 class PlayerFilters(BaseModel):
@@ -56,7 +78,7 @@ class PlayerListResponse(BaseModel):
     items: List[PlayerResponse]
 
 class PlayerLogin(BaseModel):
-    wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
+    email: Optional[str] = Field(None, min_length=42, max_length=42)
     device_fingerprint: str
     ip_address: str
 

@@ -3,6 +3,7 @@ from bson import ObjectId
 from datetime import datetime
 from app.db.mongo import get_database
 from app.auth.cookie_auth import get_current_user
+from app.schemas.player import PlayerInfoSchema
 from app.utils.upload_handler import FileUploadHandler
 import logging
 from app.models.player import Player
@@ -20,7 +21,7 @@ file_handler = FileUploadHandler()
 @router.post("/common/file-upload")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: Player = Depends(get_current_user),
+    current_user: PlayerInfoSchema = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """

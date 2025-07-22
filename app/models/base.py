@@ -33,7 +33,7 @@ PyAuditField = Annotated[Optional[ObjectId], BeforeValidator(validate_audit_fiel
 class BaseDocument(BaseModel):
     """Base document with standardized audit fields for all collections"""
     
-    id: Optional[PyObjectId] = Field(default_factory=ObjectId, alias="_id")
+    # id: Optional[PyObjectId] = Field(default_factory=ObjectId, alias="_id")
     
     # Audit fields
     created_on: datetime = Field(default_factory=datetime.utcnow)

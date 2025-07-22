@@ -47,3 +47,12 @@ class FileType(str, Enum):  # manually combine str + Enum
     ZIP = ".zip"
     RAR = ".rar"
 
+
+
+class GameType(IntEnum):
+    MainGame = 1
+    SubGame = 2
+
+
+
+

@@ -135,8 +135,7 @@ async def list_admins(
                 is_active=admin.get("is_active", True),
                 status=admin.get("status", 1),
                 fk_role_id=str(admin["fk_role_id"]) if admin.get("fk_role_id") else None,
-                role_name=admin.get("role_name"),
-                player_prefix=admin.get("player_prefix"),
+                
                 wallet_address=admin.get("wallet_address"),
                 profile_photo=admin.get("profile_photo"),
                 created_at=admin.get("created_on", datetime.utcnow()),
@@ -293,7 +292,7 @@ async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(Admi
             
             if uploadfilename and uploadurl and filesize_kb is not None and isinstance(uploadurl, str) and "temp_uploads" in uploadurl:
                 # Check if file exists in temp_uploads
-                temp_file_path = Path("public/temp_uploads") / str(uploadfilename)
+                temp_file_path = Path("uploadurl")
                 uploads_file_path = Path("public/uploads") / str(uploadfilename)
                 
                 if not temp_file_path.exists():

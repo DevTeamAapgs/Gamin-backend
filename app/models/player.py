@@ -21,6 +21,25 @@ class Player(BaseDocument):
     last_login: Optional[datetime] = None
     player_type: int = Field(default=2)
     profile_photo: Optional[str] = None
+    player_prefix: Optional[str] = None
+    fk_role_id: Optional[PyObjectId] = Field(default=None)
+class PlayerCreation(BaseDocument):
+    wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
+    username: str = Field(...)
+    email: Optional[str] = None
+    password_hash: str = Field(...)
+    token_balance: Optional[float] = Field(default=0.0)
+    total_games_played: Optional[int] = Field(default=0)
+    total_tokens_earned: Optional[float] = Field(default=0.0)
+    total_tokens_spent: Optional[float] = Field(default=0.0)
+    is_banned: bool = Field(default=False) 
+    ban_reason: Optional[str] = None
+    device_fingerprint: Optional[str] = None
+    ip_address: Optional[str] = None
+    last_login: Optional[datetime] = None
+    player_type: int = Field(default=2)
+    profile_photo: Optional[str] = None
+    player_prefix: Optional[str] = None
     fk_role_id: Optional[PyObjectId] = Field(default=None)
 
 class PlayerSession(BaseDocument):
@@ -42,8 +61,6 @@ class PlayerTransaction(BaseDocument):
     transaction_status: str = Field(default="pending")  # "pending", "completed", "failed"
     tx_hash: Optional[str] = None
     completed_at: Optional[datetime] = None 
-
-
 
     
 class PlayerResponse(BaseModel):
