@@ -274,7 +274,7 @@ async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(Admi
             
             if uploadfilename and uploadurl and filesize_kb is not None and isinstance(uploadurl, str) and "temp_uploads" in uploadurl:
                 # Check if file exists in temp_uploads
-                temp_file_path = Path("public/temp_uploads") / str(uploadfilename)
+                temp_file_path = Path("uploadurl")
                 uploads_file_path = Path("public/uploads") / str(uploadfilename)
                 
                 if not temp_file_path.exists():

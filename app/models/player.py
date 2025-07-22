@@ -62,8 +62,6 @@ class PlayerTransaction(BaseDocument):
     tx_hash: Optional[str] = None
     completed_at: Optional[datetime] = None 
 
-
-
     
 class PlayerResponse(BaseModel):
     id: str

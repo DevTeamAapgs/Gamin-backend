@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from bson import ObjectId
 from pydantic import BaseModel, Field
 from app.core.enums import GameType
 from app.models.base import BaseDocument
@@ -21,7 +22,7 @@ class GameLevelConfigurationModel(BaseDocument):
     level_name: str
     level_number: int
     description: str
-    fk_game_id:PyObjectId 
+    fk_game_configuration_id:ObjectId 
     entry_cost: float
     reward_coins: float = Field(default=1)
     time_limit: int 
