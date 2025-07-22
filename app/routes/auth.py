@@ -85,9 +85,7 @@ async def register_player(
         existing_player = await db.players.find_one({
             "$or": [
                 {"username": player_data.username},
-                {"email": player_data.email}
-               
-            ]
+                {"email": player_data.email}]
         })
         
         if existing_player:
@@ -100,11 +98,33 @@ async def register_player(
             "device_fingerprint": device_fingerprint,
             "ip_address": client_ip
         })
+        otp = email_manager.generate_otp()
+        otp_expiry = email_manager.get_otp_expiry()
+        # Encrypt OTP and expiry time
+        encrypted_otp = email_manager.encrypt_data(otp)
+        encrypted_expiry = email_manager.encrypt_data(otp_expiry.isoformat())
+        
+        player_id = ObjectId()
+        await db.new_players.insert_one({
+            "_id": player_id,
+            "username": player_data.username,
+            "email": player_data.email,
+            "otp": encrypted_otp,
+            "otp_expire_time": encrypted_expiry,
+            "updated_on": datetime.utcnow()
+        })
+        user_doc = await db.new_players.find_one({"email": player_data.email})
+        email_sent = await email_manager.send_otp_email(user_doc.get("email", "User"), user_doc.get("username", "User"), otp)
+        if not email_sent:
+            raise HTTPException(status_code=500, detail="Failed to send OTP email")
+        logger.info(f"OTP sent to {user_doc.get('email', 'User')} for user {user_doc['_id']}")
+
         
         
         # Save to database
+        player.id = player_id
         result = await db.players.insert_one(player.model_dump())
-        player.id = result.inserted_id
+        
         
         # Create session and tokens with enhanced security details
         session = await token_manager.create_player_session(
