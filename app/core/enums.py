@@ -58,5 +58,27 @@ class GameType(IntEnum):
     SubGame = 2
 
 
+class GameStatus(Enum):
+    ACTIVE = 1
+    COMPLETED = 2
+    FAILED = 3
+    ABANDONED = 4
 
+class GameActionType(Enum):
+    MOVE = 1
+    CLICK = 2
+    DRAG = 3
+    DROP = 4
+    COMPLETE = 5
+    FAIL = 6
 
+class PlayerTransactionType(Enum):
+    GAME_ENTRY = 1
+    REWARD = 2
+    WITHDRAWAL = 3
+    DEPOSIT = 4
+
+class PlayerTransactionStatus(Enum):
+    PENDING = 1
+    COMPLETED = 2
+    FAILED = 3

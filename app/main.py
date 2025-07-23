@@ -15,6 +15,7 @@ from app.middleware.encryption_middleware import ResponseEncryptionMiddleware
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
 # Import routes
 from app.routes import auth, player, game, admin, socket, roles, admincrud, common, gaming_configuration_route, game_level_configuration_route
+from app.routes import player_admin
 
 from app.utils.crypto import AESCipher
 
@@ -199,7 +200,7 @@ app.include_router(admincrud.router, prefix="/api/v1/admincrud", tags=["Admin CR
 app.include_router(gaming_configuration_route.router, prefix="/api/v1/gaming-configuration", tags=["Gaming Configuration"])
 app.include_router(game_level_configuration_route.router, prefix="/api/v1/game-level-configuration", tags=["Game Level Configuration"])
 app.include_router(common.router, prefix="/api/v1", tags=["Common"])
-
+app.include_router(player_admin.router, prefix="/api/v1/player-admin", tags=["Player Admin"])
 
 
 

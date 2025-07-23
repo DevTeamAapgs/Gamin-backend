@@ -26,8 +26,6 @@
     "_id": "ObjectId",
     "fk_player_id": "ObjectId",
     "fk_game_configuration_id": "ObjectId",
-    "game_type": "color_match",
-    "level_number": 1,
     "game_status": "completed",
     "score": 1200,
     "tokens_earned": 100.0,

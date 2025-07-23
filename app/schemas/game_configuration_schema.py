@@ -40,7 +40,7 @@ class GameConfigurationResponse(BaseModel):
         }
         # Add this new configuration for Pydantic v2
         alias_generator = None  # Disable automatic alias generation
-        allow_population_by_field_name = True  # Similar to populate_by_name
+        validate_by_name = True  # Similar to populate_by_name
 
 
 class GameConfigurationGridResponse(BaseModel):
