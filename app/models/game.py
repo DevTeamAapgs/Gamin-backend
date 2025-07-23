@@ -18,12 +18,15 @@ class GemType(BaseModel):
 class GameAttempt(BaseDocument):
     fk_player_id: ObjectId
     fk_game_configuration_id: ObjectId
+    ip_address: Optional[str] = None
+    device_fingerprint: Optional[str] = None
     level_number: int
     game_status: GameStatus = Field(default=GameStatus.ACTIVE)
     score: int = Field(default=0)
     tokens_earned: float = Field(default=0.0)
     gems_earned: GemType = Field(default=GemType(blue=0, green=0, red=0))
     entry_cost: float = Field(default=0.0)
+    gems_spent: GemType = Field(default=GemType(blue=0, green=0, red=0))
     start_time: datetime = Field(default_factory=datetime.utcnow)
     end_time: Optional[datetime] = None
     duration: Optional[float] = None  # in seconds
