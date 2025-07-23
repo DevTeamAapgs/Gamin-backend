@@ -2,7 +2,9 @@ from datetime import datetime
 from typing import Optional, List
 from bson import objectid
 from pydantic import Field, BaseModel
+from app.core.enums import PlayerTransactionStatus, PlayerTransactionType
 from app.models.base import BaseDocument, Status, DeletionStatus
+from app.models.game import GemType
 from app.utils.pyobjectid import PyObjectId
 from app.models.menu import MenuCard
 
@@ -52,13 +54,20 @@ class PlayerSession(BaseDocument):
     expires_at: datetime
     last_activity: datetime = Field(default_factory=datetime.utcnow)
 
+
+
 class PlayerTransaction(BaseDocument):
     player_id: PyObjectId
-    transaction_type: str  # "game_entry", "reward", "withdrawal", "deposit"
+    transaction_type: PlayerTransactionType
     amount: float
-    game_id: Optional[PyObjectId] = None
+    fk_game_attempt_id: Optional[PyObjectId] = None
+    fk_game_configuration_id: Optional[PyObjectId] = None
+    current_total_amount: float = Field(default=0.0)
+    gems_earned: Optional[GemType] = Field(default=GemType(blue=0, green=0, red=0))
+    gems_spent: Optional[GemType] = Field(default=GemType(blue=0, green=0, red=0))
+    gems_balance: Optional[GemType] = Field(default=GemType(blue=0, green=0, red=0))
     description: str
-    transaction_status: str = Field(default="pending")  # "pending", "completed", "failed"
+    transaction_status: PlayerTransactionStatus = Field(default=PlayerTransactionStatus.PENDING)
     tx_hash: Optional[str] = None
     completed_at: Optional[datetime] = None 
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.schemas.game import GameStart, GameSubmit, GameResponse, GameLevelResponse
-from app.models.game import Game, GameAttempt, GameReplay
+from app.models.game import GameAttempt, GameReplay
 from app.models.player import Player
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import get_current_user
@@ -60,7 +60,7 @@ async def start_game(
         )
         
         # Create game
-        game = Game(
+        game = GameAttempt(
             player_id=player.id,
             game_type=game_data.game_type,
             level=game_data.level,
@@ -142,7 +142,7 @@ async def submit_game(
         if not game_doc:
             raise HTTPException(status_code=404, detail="Game not found")
         
-        game = Game(**game_doc)
+        game = GameAttempt(**game_doc)
         
         # Verify game belongs to player
         if str(game.fk_player_id) != player_id:

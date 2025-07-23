@@ -127,3 +127,18 @@ class TransactionResponse(BaseModel):
 class BanRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500, description="Reason for banning the player") 
 
+
+class PlayerAdminGridListItem(BaseModel):
+    id: str
+    username: str
+    email: Optional[str]
+    wallet_status: bool = False
+    ip_address: Optional[str] = None
+    token_balance: float = 0.0
+    is_banned: bool = False
+    status: int 
+
+class PlayerAdminGridListResponse(BaseModel):
+    results: list[PlayerAdminGridListItem]
+    pagination: int 
+

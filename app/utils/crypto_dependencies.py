@@ -53,12 +53,10 @@ def decrypt_data_param(
     data: str = Query(...),
     crypto: AESCipher = Depends(get_crypto_service)
 ) -> dict:
-    print(request,"request")
     if request and request.headers.get("x-plaintext", "").lower() == "true":
         return eval(data) if isinstance(data, str) else data
     try:
         decrypted_json = crypto.decrypt(data)
-        print("decrypted_json ",decrypted_json)
         return eval(decrypted_json)  
     except Exception as e:
         print("Error in decrypt_data_param ",e)
