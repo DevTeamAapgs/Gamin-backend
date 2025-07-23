@@ -46,6 +46,10 @@ class FileType(str, Enum):  # manually combine str + Enum
     TXT = ".txt"
     ZIP = ".zip"
     RAR = ".rar"
+class MailType(str, Enum):  # manually combine str + Enum
+    FORGOTPASSWORD = "forgotpassword.html"
+    PLAYERREGISTER = "player_register_otp.html"
+    PLAYERONBOARDING = "player_onboard_mail.html"
 
 
 

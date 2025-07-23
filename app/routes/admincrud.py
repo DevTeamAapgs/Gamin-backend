@@ -15,7 +15,7 @@ from app.utils.upload_handler import profile_pic_handler
 from passlib.context import CryptContext
 from datetime import datetime
 from app.schemas.roles_schemas import GridDataItem
-from app.schemas.admin_curd_schemas import AdminResponse, PaginationResponse, ListResponse
+from app.schemas.admin_curd_schemas import AdminResponse, PaginationResponse, ListResponse,AdminIdResponse
 from app.schemas.admin_curd_schemas import AdminStatusUpdateRequest, AdminCreateRequest, AdminUpdateRequest, AdminGetRequest
 import logging
 import traceback
@@ -55,20 +55,6 @@ async def list_admins(
         role = params.get("role")
         query: Dict[str, Any] = {"player_type": PlayerType.ADMINEMPLOYEE}  # Allow both SUPERADMIN and ADMINEMPLOYEE
         print("search string ",search_string)
-        if search_string :
-            matching_roles = await db.roles.find({
-                "role_name": {"$regex": search_string, "$options": "i"}
-            }).to_list(length=None)
-            
-            role_ids = [role["_id"] for role in matching_roles]
-            search_conditions: List[Dict[str, Any]] = [
-                {"username": {"$regex": search_string, "$options": "i"}},
-                {"email": {"$regex": search_string, "$options": "i"}}
-            ]
-            
-            if role_ids:
-                search_conditions.append({"fk_role_id": {"$in": role_ids}})
-            query["$or"] = search_conditions
         
         if status is not None:
             try:
@@ -101,29 +87,55 @@ async def list_admins(
                         )
 
         skip = (page - 1) * count
+        
         pipeline = [
-                {"$match": query},
-                {"$sort": {"updated_on": -1}},
-                {"$skip": skip},
-                {"$limit": count},
-                {
-                    "$lookup": {
-                        "from": "roles",
-                        "localField": "fk_role_id",
-                        "foreignField": "_id",
-                        "as": "role_info"
-                    }
-                },
-                {
-                    "$addFields": {
-                        "role_name": {"$arrayElemAt": ["$role_info.role_name", 0]}
-                    }
-                },
-                {"$project": {"role_info": 0}}  # remove raw lookup array
+            {"$match": query},
+            {
+                "$lookup": {
+                    "from": "roles",
+                    "localField": "fk_role_id",
+                    "foreignField": "_id",
+                    "as": "role_info"
+                }
+            },
+            {
+                "$addFields": {
+                    "role_name": {"$arrayElemAt": ["$role_info.role_name", 0]}
+                }
+            },
+            {
+                "$match": {
+                    "$or": [
+                        {"username": {"$regex": search_string, "$options": "i"}},
+                        {"email": {"$regex": search_string, "$options": "i"}},
+                        {"role_name": {"$regex": search_string, "$options": "i"}},
+                    ]
+                } if search_string else {}
+            },
+            {"$sort": {"updated_on": -1}},
+            {"$skip": skip},
+            {"$limit": count},
+            {"$project": {"role_info": 0, "fk_role_id": 0  }}
+        ]
+        pipeline = [stage for stage in pipeline if stage != {"$match": {}}]
+
+        total_query = query.copy()
+        if search_string:
+            total_query["$or"] = [
+                {"username": {"$regex": search_string, "$options": "i"}},
+                {"email": {"$regex": search_string, "$options": "i"}}
             ]
 
+            matching_roles = await db.roles.find({
+                "role_name": {"$regex": search_string, "$options": "i"}
+            }).to_list(length=None)
+
+            if matching_roles:
+                role_ids = [role["_id"] for role in matching_roles]
+                total_query["$or"].append({"fk_role_id": {"$in": role_ids}})
+
             # Get total count (outside aggregation)
-        total = await db.players.count_documents(query)
+        total = await db.players.count_documents(total_query)
         admin_list = await db.players.aggregate(pipeline).to_list(length=count)
         data = []
         for admin in admin_list:
@@ -132,14 +144,9 @@ async def list_admins(
                 id=str(admin["_id"]),
                 username=admin["username"],
                 email=admin.get("email", ""),
-                is_admin=True,
-                is_active=admin.get("is_active", True),
                 status=admin.get("status", 1),
-                fk_role_id=str(admin["fk_role_id"]) if admin.get("fk_role_id") else None,
                 role_name=admin.get("role_name"),
-                profile_photo=admin.get("profile_photo"),
-                created_at=admin.get("created_on", datetime.utcnow()),
-                last_login=admin.get("last_login")
+                profile_photo=admin.get("profile_photo")    
             ))
         print("data ",data)
         total_pages = (total + count - 1) // count
@@ -179,7 +186,7 @@ async def get_role_dependency(
         raise HTTPException(status_code=500, detail="Failed to list roles") 
         
 # 2.1. GET /admins/{admin_id} - Get specific admin by ID from URL parameter
-@router.get("/admins/{admin_id}", response_model=AdminResponse)
+@router.get("/admins/{admin_id}", response_model=AdminIdResponse)
 async def get_admin_by_id(
     admin_id: str,  # Now a path parameter, not decrypted
     current_admin: dict = Depends(verify_admin),
@@ -187,48 +194,22 @@ async def get_admin_by_id(
 ):
     """Get a specific admin by ID from URL parameter."""
     try:
-        #admin_id = params.get("admin_id")
-        pipeline = [
-            {"$match": {"_id": ObjectId(admin_id), "player_type": PlayerType.ADMINEMPLOYEE}},
-            {
-                "$lookup": {
-                    "from": "roles",
-                    "localField": "fk_role_id",
-                    "foreignField": "_id",
-                    "as": "role_info"
-                }
-            },
-            {
-                "$addFields": {
-                    "role_name": {"$arrayElemAt": ["$role_info.role_name", 0]}
-                }
-            },
-            {
-                "$project": {
-                    "role_info": 0  # Hide full role array
-                }
-            }
-        ]
-        result = await db.players.aggregate(pipeline).to_list(length=1)  # ✅ ADD THIS
+       
+        result = await db.players.find_one({"_id": ObjectId(admin_id),"player_type": PlayerType.ADMINEMPLOYEE})
         if not result:
             raise HTTPException(status_code=404, detail="Admin not found")
-        admin_data = result[0]
+        admin_data = result
         if not admin_data:
             raise HTTPException(status_code=404, detail="Admin not found")
         
         
-        return AdminResponse(
+        return AdminIdResponse(
             id=str(admin_data["_id"]),
             username=admin_data["username"],
             email=admin_data.get("email", ""),
-            is_admin=True,
-            is_active=admin_data.get("is_active", True),
             status=admin_data.get("status", 1),
-            fk_role_id=str(admin_data["fk_role_id"]) if admin_data.get("fk_role_id") else None,
-            role_name=admin_data.get("role_name"),
             profile_photo=admin_data.get("profile_photo"),
-            created_at=admin_data.get("created_on", datetime.utcnow()),
-            last_login=admin_data.get("last_login")
+            fk_role_id=str(admin_data["fk_role_id"])
         )
         
     except HTTPException:
@@ -312,10 +293,7 @@ async def create_user(admin_data: AdminCreateRequest = Depends(decrypt_body(Admi
         if profile_photo:
             user_doc["profile_photo"] = profile_photo
         
-        # Insert and return
-        result = await db.players.insert_one(user_doc)
-        user_doc["_id"] = result.inserted_id
-        
+        await db.players.insert_one(user_doc)
         return {"message": "Admin created successfully"}
         
     except HTTPException:
@@ -409,8 +387,6 @@ async def update_admin(    admin_data: AdminUpdateRequest = Depends(decrypt_body
                 except Exception as e:
                     logger.error(f"Error deleting profile picture: {e}")
                 
-                # Clean up any remaining temp files for this user
-                await cleanup_user_temp_files(str(existing_user["_id"]), existing_user)
         
         # Build update data
         update_data = {

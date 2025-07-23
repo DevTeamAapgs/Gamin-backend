@@ -20,6 +20,7 @@ class PlayerCreate(BaseModel):
     email: EmailStr
     password: str
     status: int = 1
+    otp: Optional[str] = None
 
 class PlayerUpdate(BaseModel):
     username: Optional[str]

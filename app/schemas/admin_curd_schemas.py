@@ -40,15 +40,18 @@ class AdminResponse(BaseModel):
     id: str = Field(..., description="User ID")
     username: str = Field(..., description="Username")
     email: str = Field(..., description="Email address")
-    is_admin: bool = Field(..., description="Whether user is an admin")
-    is_active: bool = Field(..., description="Whether user is active")
     status: Optional[int] = None
-    fk_role_id: Optional[str] = None
     role_name: Optional[str] = None
     profile_photo: Optional[Dict[str, str | float]] = None
-    created_at: datetime = Field(..., description="Account creation timestamp")
-    last_login: Optional[datetime] = None
-
+   
+class AdminIdResponse(BaseModel):
+    """Admin user response"""
+    id: str = Field(..., description="User ID")
+    username: str = Field(..., description="Username")
+    email: str = Field(..., description="Email address")
+    status: Optional[int] = None
+    profile_photo: Optional[Dict[str, str | float]] = None
+    fk_role_id: Optional[str] = None
 class StatusUpdateRequest(BaseModel):
     """Request model for status updates"""
     status: str = Field(..., description="New status value")

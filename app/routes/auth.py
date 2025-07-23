@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from re import A
+from fastapi.responses import JSONResponse
 from traceback import print_tb
 from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -23,7 +24,7 @@ from typing import Annotated, Callable
 import os
 import shutil
 from pathlib import Path
-from app.core.enums import PlayerType
+from app.core.enums import PlayerType,MailType
 
 from app.utils.crypto_dependencies import decrypt_body
 from app.schemas.admin_curd_schemas import TokenResponse
@@ -63,104 +64,135 @@ async def cleanup_user_temp_files_on_logout(player_id: str):
     except Exception as e:
         logger.error(f"Cleanup failed for user {player_id}: {e}")
 
-@router.post("/register", response_model=TokenResponse)
-async def register_player(
-    request: Request, 
-    response: Response, 
-    # player_data: PlayerCreate ,
-    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)), 
-    db: AsyncIOMotorDatabase = Depends(get_database),
-
+@router.post("/register")
+async def request_registration_otp(
+    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Register a new player."""
     try:
-        # Access request details set by SecurityLoggingMiddleware
-        device_fingerprint = getattr(request.state, 'device_fingerprint', None)
-        client_ip = getattr(request.state, 'client_ip', None)
-        user_agent = getattr(request.state, 'user_agent', None)
-        
-        # Log the request details for debugging
-        logger.info(f"Registration request details - Device: {device_fingerprint}, IP: {client_ip}, User-Agent: {user_agent}")
-        
         # Check if player already exists
         existing_player = await db.players.find_one({
-            "$or": [
-                {"username": player_data.username},
-                {"email": player_data.email}]
+            "$or": [{"username": player_data.username}, {"email": player_data.email}]
         })
-        
         if existing_player:
-            raise HTTPException(status_code=400, detail="Player Details already exists")
-        player_prefix = await generate_prefix("player", 4, db=db)
+            raise HTTPException(status_code=400, detail="Player already exists")
 
-
-        # Create new player
-        player = PlayerCreation(**{
-            "username": player_data.username,
-            "email": player_data.email,
-            "password_hash": get_password_hash(player_data.password),
-            "device_fingerprint": device_fingerprint,
-            "ip_address": client_ip,
-            "player_prefix":player_prefix
-        })
+        # Generate OTP
         otp = email_manager.generate_otp()
         otp_expiry = email_manager.get_otp_expiry()
-        # Encrypt OTP and expiry time
+
         encrypted_otp = email_manager.encrypt_data(otp)
         encrypted_expiry = email_manager.encrypt_data(otp_expiry.isoformat())
-        
-        player_id = ObjectId()
-        await db.new_players.insert_one({
-            "_id": player_id,
-            "username": player_data.username,
-            "email": player_data.email,
-            "otp": encrypted_otp,
-            "otp_expire_time": encrypted_expiry,
-            "updated_on": datetime.utcnow()
-        })
-        user_doc = await db.new_players.find_one({"email": player_data.email})
-        email_sent = await email_manager.send_otp_email(user_doc.get("email", "User"), user_doc.get("username", "User"), otp)
+
+        # Store OTP and user info in temporary collection
+        await db.new_players.update_one(
+            {"email": player_data.email},
+            {
+                "$set": {
+                    "username": player_data.username,
+                    "email": player_data.email,
+                    "otp": encrypted_otp,
+                    "otp_expire_time": encrypted_expiry,
+                    "updated_on": datetime.utcnow(),
+                }
+            },
+            upsert=True
+        )
+       
+        # Send email
+        email_sent = await email_manager.send_otp_email(
+            player_data.email, player_data.username, otp,MailType.PLAYERREGISTER.value
+        )
         if not email_sent:
             raise HTTPException(status_code=500, detail="Failed to send OTP email")
-        logger.info(f"OTP sent to {user_doc.get('email', 'User')} for user {user_doc['_id']}")
 
-        
-        
-        # Save to database
-        player.id = player_id
-        result = await db.players.insert_one(player.model_dump())
+        return {"message": "OTP sent to your email. Please verify to complete registration."}
 
-        player_id = result.inserted_id
-        
-        # Create session and tokens with enhanced security details
-        session = await token_manager.create_player_session(
-           { "id":player_id, **player.model_dump()}, device_fingerprint or "unknown", client_ip or "unknown"
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Request OTP failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send OTP")
+
+@router.post("/register/verify", response_model=TokenResponse)
+async def verify_otp_and_register(
+    request: Request,
+    response: Response,
+    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    try:
+        device_fingerprint = getattr(request.state, 'device_fingerprint', None)
+        client_ip = getattr(request.state, 'client_ip', None)
+
+        temp_user = await db.new_players.find_one({"email": player_data.email})
+        if not temp_user:
+            raise HTTPException(status_code=404, detail="OTP not found or expired")
+
+        stored_otp = email_manager.decrypt_data(temp_user["otp"])
+        otp_expiry_str = email_manager.decrypt_data(temp_user["otp_expire_time"])
+        otp_expiry = datetime.fromisoformat(otp_expiry_str)
+        print("stored otp",stored_otp)
+        print("player_data.otp",player_data.otp)
+        if player_data.otp != stored_otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+        if datetime.utcnow() > otp_expiry:
+            raise HTTPException(status_code=400, detail="OTP has expired")
+
+        # OTP is valid → Register player
+        player_prefix = await generate_prefix("player", 4, db=db)
+        player_id = ObjectId()
+
+        player = PlayerCreation(
+            id=player_id,
+            username=player_data.username,
+            email=player_data.email,
+            password_hash=get_password_hash(player_data.password),
+            device_fingerprint=device_fingerprint,
+            ip_address=client_ip,
+            player_prefix=player_prefix,
+            player_type=PlayerType.PLAYER,
+            is_banned=False,
+            ban_reason=None,
+            is_active=True,
+            status=1,
+            fk_role_id=None,
+            created_on=datetime.utcnow(),
+            updated_on=datetime.utcnow(),
+            created_by=None,
+            wallet_address=None,
+            token_balance=0,
+            total_games_played=0,
+            total_tokens_earned=0,
+            total_tokens_spent=0,
+            last_login=None,
+            profile_photo=None
         )
-        
-        print("session",session)
-        # Generate tokens
-        access_token = token_manager.create_access_token({"sub": str(player_id), "wallet": player.wallet_address })
+
+        await db.players.insert_one(player.model_dump())
+        await db.new_players.delete_one({"_id": temp_user["_id"]})
+
+        session = await token_manager.create_player_session(
+            {"id": str(player_id), **player.model_dump()},
+            device_fingerprint or "unknown",
+            client_ip or "unknown"
+        )
+
+        access_token = token_manager.create_access_token({"sub": str(player_id), "wallet": player.wallet_address})
         refresh_token = session.refresh_token
-        
-        logger.info(f"New player registered: {player.username} from IP: {client_ip} with device: {device_fingerprint}")
-        
-        # Set cookies
         set_auth_cookies(response, access_token, refresh_token)
-        
-        token_response = TokenResponse(
+
+        return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in=settings.access_token_expire_minutes * 60
         )
-        return token_response
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Registration failed: {e}")
-        if(result.inserted_id):
-            await db.players.delete_one({"_id": result.inserted_id})
-        raise HTTPException(status_code=500, detail="Registration failed")
+        logger.error(f"OTP verification failed: {e}")
+        raise HTTPException(status_code=500, detail="OTP verification failed")
 
 @router.post("/login", response_model=TokenResponse)
 async def login_player(  request: Request, response: Response, player_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
@@ -387,7 +419,7 @@ async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_
             }
         )
         # Send OTP email
-        email_sent = await email_manager.send_otp_email(request_data.email, user_doc.get("username", "User"), otp)
+        email_sent = await email_manager.send_otp_email(request_data.email, user_doc.get("username", "User"), otp,MailType.FORGOTPASSWORD.value)
         if not email_sent:
             raise HTTPException(status_code=500, detail="Failed to send OTP email")
         logger.info(f"OTP sent to {request_data.email} for user {user_doc['_id']}")
