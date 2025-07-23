@@ -45,7 +45,7 @@ class GameConfigurationResponse(BaseModel):
 
 class GameConfigurationGridResponse(BaseModel):
     results: List[GameConfigurationResponse] = Field(default_factory=list, description="The results of the game configuration")
-    pagination: int = Field(default=0, description="The pagination of the game configuration")
+    total: int = Field(default=0, description="The pagination of the game configuration")
 
 class GameConfigurationStatusUpdateSchema(BaseModel):
     id: str = Field(..., description="The id of the game")
