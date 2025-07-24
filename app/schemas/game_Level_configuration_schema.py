@@ -1,6 +1,7 @@
 from typing import Optional, List
 from bson import ObjectId
 from pydantic import BaseModel, Field
+from app.core.enums import GameType
 from app.utils.pyobjectid import PyObjectId
 from app.models.game import GemType
 
@@ -11,6 +12,7 @@ class AddDetailsSchema(BaseModel):
 class GameLevelConfigurationSaveSchema(BaseModel):
     level_name: str
     level_number: int
+    level_type: GameType
     description: str
     fk_game_configuration_id: str
     entry_cost: float
@@ -25,6 +27,7 @@ class GameLevelConfigurationUpdateSchema(BaseModel):
     id: str
     level_name: str
     level_number: int
+    level_type: GameType
     description: str
     fk_game_configuration_id: str
     entry_cost: float
@@ -39,7 +42,7 @@ class GameLevelConfigurationResponse(BaseModel):
     id: Optional[PyObjectId] 
     level_name: str
     level_number: int
-    level_type: int
+    level_type: GameType
     description: str
     fk_game_configuration_id: PyObjectId
     entry_cost: float = Field(default=0)
