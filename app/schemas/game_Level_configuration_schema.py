@@ -2,6 +2,7 @@ from typing import Optional, List
 from bson import ObjectId
 from pydantic import BaseModel, Field
 from app.utils.pyobjectid import PyObjectId
+from app.models.game import GemType
 
 class AddDetailsSchema(BaseModel):
     time_mintues: int
@@ -13,7 +14,9 @@ class GameLevelConfigurationSaveSchema(BaseModel):
     description: str
     fk_game_configuration_id: str
     entry_cost: float
+    entry_cost_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     reward_coins: float = Field(default=1)
+    reward_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     time_limit: int
     max_attempts: int = Field(default=3)
     add_details: List[AddDetailsSchema] = Field(default_factory=list)
@@ -25,7 +28,9 @@ class GameLevelConfigurationUpdateSchema(BaseModel):
     description: str
     fk_game_configuration_id: str
     entry_cost: float
+    entry_cost_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     reward_coins: float = Field(default=1)
+    reward_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     time_limit: int
     max_attempts: int = Field(default=3)
     add_details: List[AddDetailsSchema] = Field(default_factory=list)
@@ -34,10 +39,13 @@ class GameLevelConfigurationResponse(BaseModel):
     id: Optional[PyObjectId] 
     level_name: str
     level_number: int
+    level_type: int
     description: str
     fk_game_configuration_id: PyObjectId
-    entry_cost: float
-    reward_coins: float
+    entry_cost: float = Field(default=0)
+    entry_cost_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
+    reward_coins: float = Field(default=0)
+    reward_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     time_limit: int
     max_attempts: int
     add_details: List[AddDetailsSchema] = Field(default_factory=list)

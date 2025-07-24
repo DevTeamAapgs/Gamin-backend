@@ -650,9 +650,6 @@ async def get_all_players(
     """Get all players with optional filtering."""
     try:
         await verify_admin(request, credentials)
-        
-        
-        
         # Build query
         query = {}
         if is_banned is not None:
@@ -691,84 +688,6 @@ async def get_all_players(
     except Exception as e:
         logger.error(f"Get all players failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to get players")
-
-@router.post("/players/{player_id}/ban")
-async def ban_player(
-    request: Request,
-    player_id: str,
-    ban_data: BanRequest = Depends(decrypt_body(BanRequest)),
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db:AsyncIOMotorDatabase = Depends(get_database),
-):
-    """Ban a player."""
-    try:
-        await verify_admin(request, credentials)
-        
-        
-        db = get_database()
-        
-        result = await db.players.update_one(
-            {"_id": player_id},
-            {
-                "$set": {
-                    "is_banned": True,
-                    "ban_reason": ban_data.reason,
-                    "updated_at": datetime.utcnow()
-                }
-            }
-        )
-        
-        if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Player not found")
-        
-        logger.info(f"Player {player_id} banned: {ban_data.reason}")
-        
-        response_data = {"message": "Player banned successfully"}
-        return response_data
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Ban player failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to ban player")
-
-@router.post("/players/{player_id}/unban")
-async def unban_player(
-    request: Request,
-    player_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db:AsyncIOMotorDatabase = Depends(get_database)
-):
-    """Unban a player."""
-    try:
-        await verify_admin(request, credentials)
-        
-        
-        
-        result = await db.players.update_one(
-            {"_id": player_id},
-            {
-                "$set": {
-                    "is_banned": False,
-                    "ban_reason": None,
-                    "updated_at": datetime.utcnow()
-                }
-            }
-        )
-        
-        if result.modified_count == 0:
-            raise HTTPException(status_code=404, detail="Player not found")
-        
-        logger.info(f"Player {player_id} unbanned")
-        
-        response_data = {"message": "Player unbanned successfully"}
-        return response_data
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unban player failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to unban player")
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 async def get_leaderboard(
