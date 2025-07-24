@@ -18,6 +18,7 @@ class GemType(BaseModel):
 class GameAttempt(BaseDocument):
     fk_player_id: ObjectId
     fk_game_configuration_id: ObjectId
+    fk_game_level_id: ObjectId
     ip_address: Optional[str] = None
     device_fingerprint: Optional[str] = None
     level_number: int
@@ -45,6 +46,7 @@ class GameAction(BaseDocument):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     session_id: Optional[str] = None
 
+    
 # class GameAttempt(BaseDocument):
 #     fk_player_id: ObjectId
 #     fk_game_configuration_id: ObjectId

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.core.enums import GameType
 from app.models.base import BaseDocument
 from app.utils.pyobjectid import PyObjectId
+from app.models.game import GemType
 
 class GameConfigurationModel(BaseDocument):
     game_name: str = Field(..., description="The name of the game")
@@ -25,6 +26,12 @@ class GameLevelConfigurationModel(BaseDocument):
     fk_game_configuration_id:ObjectId 
     entry_cost: float
     reward_coins: float = Field(default=1)
-    time_limit: int 
+    
+    level_type: int
+    entry_cost_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
+    reward_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
+    
+    time_limit: int
+
     max_attempts: int = Field(default=3)
     add_details: list[AddDetails] = Field(default_factory=list, description="The description of the game")
