@@ -8,6 +8,11 @@ from app.db.mongo import get_database
 from app.core.enums import PlayerType
 from bson import ObjectId
 import logging
+from app.utils.crypto import AESCipher
+from app.utils.crypto_dependencies import get_crypto_service
+from app.models.game import GemType
+import json
+from app.utils.crypto import AESCipher
 
 from app.schemas.player import PlayerInfoSchema
 
@@ -103,6 +108,40 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    crypto = get_crypto_service()
+    # Safely handle decryption only if value is a string
+    for field in ["token_balance", "total_tokens_earned", "total_tokens_spent"]:
+        value = player_doc.get(field, "0")
+        if isinstance(value, str):
+            try:
+                player_doc[field] = float(crypto.decrypt(value))
+            except Exception:
+                player_doc[field] = 0.0
+        else:
+            player_doc[field] = float(value)
+    # Decrypt gems
+    gems_value = player_doc.get("gems", {})
+    if isinstance(gems_value, dict):
+        decrypted_gems = {}
+        for color in ["blue", "green", "red"]:
+            val = gems_value.get(color, "0")
+            if isinstance(val, str):
+                try:
+                    decrypted_gems[color] = int(crypto.decrypt(val))
+                except Exception:
+                    decrypted_gems[color] = 0
+            else:
+                decrypted_gems[color] = int(val)
+        player_doc["gems"] = GemType(**decrypted_gems)
+    else:
+        player_doc["gems"] = GemType(blue=0, green=0, red=0)
+    print("Decrypted player_doc:", player_doc)
+    if not player_doc:
+        raise HTTPException(
+            status_code=401,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     # Convert to Player object
     player_doc["id"] = str(player_doc["_id"])
     return PlayerInfoSchema(**player_doc)

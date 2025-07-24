@@ -25,6 +25,9 @@ class Player(BaseDocument):
     profile_photo: Optional[str] = None
     player_prefix: Optional[str] = None
     fk_role_id: Optional[PyObjectId] = Field(default=None)
+    gems: Optional[GemType] = None
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 class PlayerCreation(BaseDocument):
     wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
     username: str = Field(...)
@@ -34,6 +37,7 @@ class PlayerCreation(BaseDocument):
     total_games_played: Optional[int] = Field(default=0)
     total_tokens_earned: Optional[float] = Field(default=0.0)
     total_tokens_spent: Optional[float] = Field(default=0.0)
+    gems: Optional[GemType] = Field(default=GemType(blue=0, green=0, red=0))
     is_banned: bool = Field(default=False) 
     ban_reason: Optional[str] = None
     device_fingerprint: Optional[str] = None
@@ -84,7 +88,7 @@ class PlayerResponse(BaseModel):
     is_active: bool
     created_at: Optional[str]
     last_login: Optional[str]
-    menus: List[MenuCard]
+    gems: Optional[GemType] = Field(default=GemType(blue=0, green=0, red=0))
     
     
 class PermissionItem(BaseModel):
