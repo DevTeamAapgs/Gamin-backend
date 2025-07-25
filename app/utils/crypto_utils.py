@@ -29,6 +29,8 @@ def encrypt_player_fields(player_dict: dict, crypto: AESCipher) -> dict:
     return player_dict
 
 def safe_float_decrypt(enc_val, crypto):
+    if isinstance(enc_val, (float, int)):
+        return float(enc_val)
     val = crypto.decrypt(enc_val)
     return float(json.loads(val))
 
@@ -42,8 +44,11 @@ def decrypt_player_fields(data: dict) -> dict:
         gems = data.get("gems", {"blue": "0", "green": "0", "red": "0"})
         decrypted_gems = {}
         for color in ["blue", "green", "red"]:
-            enc_val = gems.get(color, "0")
-            decrypted_gems[color] = int(json.loads(crypto.decrypt(enc_val)))
+            val = gems.get(color, "0")
+            if isinstance(val, (float, int)):
+                decrypted_gems[color] = int(val)
+            else:
+                decrypted_gems[color] = int(json.loads(crypto.decrypt(val)))
         data["gems"] = GemType(**decrypted_gems)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Decryption error: {str(e)}")

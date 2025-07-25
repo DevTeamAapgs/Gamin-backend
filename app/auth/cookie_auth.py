@@ -13,6 +13,7 @@ from app.utils.crypto_dependencies import get_crypto_service
 from app.models.game import GemType
 import json
 from app.utils.crypto import AESCipher
+from app.utils.crypto_utils import decrypt_player_fields
 
 from app.schemas.player import PlayerInfoSchema
 
@@ -123,36 +124,7 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    crypto = get_crypto_service()
-    # Safely handle decryption only if value is a string
-    for field in ["token_balance", "total_tokens_earned", "total_tokens_spent"]:
-        value = player_doc.get(field, "0")
-        if isinstance(value, str):
-            try:
-                player_doc[field] = float(json.loads(crypto.decrypt(value)))
-                print("Decrypted",field,player_doc[field])
-            except Exception:
-                print("Error decrypting",field)
-                print("Error",value)
-                player_doc[field] = 0.0
-        else:
-            player_doc[field] = float(value)
-    # Decrypt gems
-    gems_value = player_doc.get("gems", {})
-    if isinstance(gems_value, dict):
-        decrypted_gems = {}
-        for color in ["blue", "green", "red"]:
-            val = gems_value.get(color, "0")
-            if isinstance(val, str):
-                try:
-                    decrypted_gems[color] = int(json.loads(crypto.decrypt(val)))
-                except Exception:
-                    decrypted_gems[color] = 0
-            else:
-                decrypted_gems[color] = int(val)
-        player_doc["gems"] = GemType(**decrypted_gems)
-    else:
-        player_doc["gems"] = GemType(blue=0, green=0, red=0)
+    player_doc = decrypt_player_fields(player_doc)
     print("Decrypted player_doc:", player_doc)
     if not player_doc:
         raise HTTPException(
