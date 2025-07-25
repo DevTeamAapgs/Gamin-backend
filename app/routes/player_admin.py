@@ -11,6 +11,8 @@ from app.utils.crypto_dependencies import decrypt_data_param, decrypt_body
 from app.models.player_banned_details import PlayerBannedDetails
 from datetime import datetime, timedelta
 from typing import Optional
+from app.models.player import Player
+from app.schemas.player import PlayerResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -149,4 +151,38 @@ async def unban_player(
         return {"message": "Player unbanned successfully"}
     except Exception as e:
         logger.error(f"Unban player failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to unban player") 
+        raise HTTPException(status_code=500, detail="Failed to unban player")
+
+@router.get("/{player_id}", response_model=PlayerResponse)
+async def get_player_by_id(
+    player_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get a single player by player_id (path param) for admin panel."""
+    try:
+        player_doc = await db.players.find_one({"_id": ObjectId(player_id)})
+        if not player_doc:
+            raise HTTPException(status_code=404, detail="Player not found")
+        player = Player(**player_doc)
+        response = PlayerResponse(
+            id=str(player_doc.get("_id")),
+            wallet_address=player.wallet_address,
+            player_prefix=getattr(player, "player_prefix", None),
+            profile_photo=getattr(player, "profile_photo", None),
+            player_type=getattr(player, "player_type", None),
+            is_verified=getattr(player, "is_verified", None),
+            token_balance=player.token_balance,
+            total_games_played=player.total_games_played,
+            total_tokens_earned=player.total_tokens_earned,
+            username=player.username,
+            email=player.email,
+            last_login=player.last_login
+            
+        )
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get player by id failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get player") 

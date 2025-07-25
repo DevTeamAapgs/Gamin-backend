@@ -142,3 +142,25 @@ class PlayerAdminGridListResponse(BaseModel):
     results: list[PlayerAdminGridListItem]
     pagination: int 
 
+
+
+class PlayerAdminResponseWithId(BaseModel):
+    id: str 
+    wallet_address: Optional[str] = None
+    player_prefix: Optional[str] = None    # Add player prefix field
+    is_banned: Optional[str] = None
+    created_on: datetime 
+    # profile_photo dict fields:
+    #   - uploadfilename: str
+    #   - uploadurl: str
+    #   - filesize_bytes: int (file size in bytes)
+    #   - filesize_kb: float (file size in kilobytes, rounded to 2 decimals)
+    profile_photo: Optional[Dict[str, str | int | float]] = None
+    player_type: Optional[int] = Field(None, description="Player type: 0=SUPERADMIN, 1=ADMINEMPLOYEE, 2=PLAYER")
+    is_verified: Optional[bool] = None
+    token_balance: Optional[int]
+    total_games_played: Optional[int]
+    total_tokens_earned: Optional[int]
+    username: Optional[str]
+    email: Optional[EmailStr]
+    last_login: Optional[datetime]
