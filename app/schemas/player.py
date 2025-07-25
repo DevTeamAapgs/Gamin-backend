@@ -138,7 +138,7 @@ class PlayerAdminGridListItem(BaseModel):
     email: Optional[str]
     wallet_status: bool = False
     ip_address: Optional[str] = None
-    token_balance: float = 0.0
+    # token_balance: float = 0.0
     is_banned: bool = False
     status: int 
 
@@ -154,11 +154,7 @@ class PlayerAdminResponseWithId(BaseModel):
     player_prefix: Optional[str] = None    # Add player prefix field
     is_banned: Optional[str] = None
     created_on: datetime 
-    # profile_photo dict fields:
-    #   - uploadfilename: str
-    #   - uploadurl: str
-    #   - filesize_bytes: int (file size in bytes)
-    #   - filesize_kb: float (file size in kilobytes, rounded to 2 decimals)
+    gems: Optional[GemType] = None
     profile_photo: Optional[Dict[str, str | int | float]] = None
     player_type: Optional[int] = Field(None, description="Player type: 0=SUPERADMIN, 1=ADMINEMPLOYEE, 2=PLAYER")
     is_verified: Optional[bool] = None

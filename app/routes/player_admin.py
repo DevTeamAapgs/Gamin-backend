@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from app.models.player import Player
 from app.schemas.player import PlayerResponse
+from app.utils.crypto_utils import decrypt_player_fields, safe_float_decrypt
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -164,6 +165,7 @@ async def get_player_by_id(
         player_doc = await db.players.find_one({"_id": ObjectId(player_id)})
         if not player_doc:
             raise HTTPException(status_code=404, detail="Player not found")
+        player_doc = decrypt_player_fields(player_doc)
         player = Player(**player_doc)
         response = PlayerResponse(
             id=str(player_doc.get("_id")),
@@ -178,7 +180,7 @@ async def get_player_by_id(
             username=player.username,
             email=player.email,
             last_login=player.last_login
-            
+
         )
         return response
     except HTTPException:
