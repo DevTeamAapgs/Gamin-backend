@@ -11,7 +11,7 @@ class GameConfigurationModel(BaseDocument):
     game_description: str = Field(..., description="The description of the game")
     game_banner: list[dict] = Field(default_factory=list, description="The description of the game")
     game_icon: dict = Field(default_factory=dict, description="The description of the game")
-    game_type: GameType = Field(default=GameType.MainGame)  
+    
     
 
 class AddDetails(BaseModel):

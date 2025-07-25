@@ -2,9 +2,9 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field
-from app.core.enums import PlayerType
+from app.core.enums import GameType, PlayerType
 from app.models.base import BaseDocument, PyObjectId
-from app.models.game import GemType
+from app.models.game import GemType, GameStatus
 class RoleResponse(BaseModel):
     id: str = Field(..., alias="_id")
     role: str
@@ -144,7 +144,7 @@ class PlayerAdminGridListItem(BaseModel):
 
 class PlayerAdminGridListResponse(BaseModel):
     results: list[PlayerAdminGridListItem]
-    pagination: int 
+    total: int 
 
 
 
@@ -164,3 +164,40 @@ class PlayerAdminResponseWithId(BaseModel):
     username: Optional[str]
     email: Optional[EmailStr]
     last_login: Optional[datetime]
+
+class PlayerAdminGameAttemptResponse(BaseModel):
+    id: str
+    game_name: str
+    level_name: str
+    level_number: int
+    level_type: GameType
+    game_status: GameStatus
+    # created_on: datetime
+    end_time: Optional[datetime]
+    duration: Optional[float] = 0.0
+    score: int = 0
+    tokens_earned: Optional[float] = 0.0
+    gems_earned: Optional[GemType] = GemType(blue=0, green=0, red=0)
+    entry_cost: Optional[float] = 0.0
+    gems_spent: Optional[GemType] = GemType(blue=0, green=0, red=0)
+    start_time: Optional[datetime]
+    end_time: Optional[datetime]
+    duration: Optional[float] 
+    moves_count: Optional[int] = 0
+    completion_percentage: Optional[float] = 0.0
+
+class PlayerAdminGameAttemptListResponse(BaseModel):
+    results: list[PlayerAdminGameAttemptResponse]
+    total: int 
+
+class SessionWithUsernameResponse(BaseModel):
+    id: str
+    device_fingerprint: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    expires_at: datetime
+    last_activity: datetime
+
+class SessionWithUsernameListResponse(BaseModel):
+    results: list[SessionWithUsernameResponse]
+    total: int 

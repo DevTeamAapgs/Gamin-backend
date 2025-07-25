@@ -131,7 +131,7 @@ async def verify_otp_and_register(
     try:
         device_fingerprint = getattr(request.state, 'device_fingerprint', None)
         client_ip = getattr(request.state, 'client_ip', None)
-
+        user_agent = getattr(request.state, 'user_agent', None)
         temp_user = await db.new_players.find_one({"email": player_data.email})
         if not temp_user:
             raise HTTPException(status_code=404, detail="OTP not found or expired")
@@ -207,7 +207,8 @@ async def verify_otp_and_register(
         session = await token_manager.create_player_session(
             {"id": str(player_id), **player.model_dump()},
             device_fingerprint or "unknown",
-            client_ip or "unknown"
+            client_ip or "unknown",
+            user_agent or "unknown"
         )
 
         access_token = token_manager.create_access_token({"sub": str(player_id), "wallet": player.wallet_address})
@@ -289,7 +290,7 @@ async def login_player(request: Request, response: Response, player_data: AdminL
 
         # Create new session
         session = await token_manager.create_player_session(
-            {"id":player_doc.get("_id"), **player_doc}, device_fingerprint or "unknown", client_ip or "unknown"
+            {"id":player_doc.get("_id"), **player_doc}, device_fingerprint or "unknown", client_ip or "unknown", user_agent or "unknown"    
         )
         # Generate tokens
         access_token = token_manager.create_access_token({"sub": str(player_doc.get("_id")), "wallet": player.wallet_address})
