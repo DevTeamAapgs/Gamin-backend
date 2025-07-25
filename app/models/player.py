@@ -9,6 +9,7 @@ from app.utils.pyobjectid import PyObjectId
 from app.models.menu import MenuCard
 
 class Player(BaseDocument):
+    id: Optional[PyObjectId] = Field(default_factory=PyObjectId, alias="_id")
     wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
     username: str = Field(...)
     email: Optional[str] = None
@@ -33,10 +34,10 @@ class PlayerCreation(BaseDocument):
     username: str = Field(...)
     email: Optional[str] = None
     password_hash: str = Field(...)
-    token_balance: Optional[float] = Field(default=0.0)
-    total_games_played: Optional[int] = Field(default=0)
-    total_tokens_earned: Optional[float] = Field(default=0.0)
-    total_tokens_spent: Optional[float] = Field(default=0.0)
+    token_balance: Optional[float] = Field(default=1000.0)
+    total_games_played: Optional[int] = Field(default=10)
+    total_tokens_earned: Optional[float] = Field(default=250.0)
+    total_tokens_spent: Optional[float] = Field(default=2500.0)
     gems: Optional[GemType] = Field(default=GemType(blue=0, green=0, red=0))
     is_banned: bool = Field(default=False) 
     ban_reason: Optional[str] = None

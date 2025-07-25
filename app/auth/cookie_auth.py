@@ -1,4 +1,4 @@
-from fastapi import Request, HTTPException, Depends
+from fastapi import Request, HTTPException, Depends, WebSocket
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Union
 from app.auth.token_manager import token_manager
@@ -40,7 +40,22 @@ class CookieAuth:
         if credentials:
             return credentials.credentials
         return None
-    
+    def get_token_from_websocket(self, websocket: WebSocket) -> Optional[str]:
+    # Try from cookies (if cookies are set in the headers)
+        cookie_header = websocket.headers.get("cookie")
+        if cookie_header:
+            cookies = dict(item.split("=", 1) for item in cookie_header.split("; "))
+            token = cookies.get("access_token")  # Adjust the key as needed
+            if token:
+                return token
+
+    # Fallback to Authorization header
+        auth_header = websocket.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            return auth_header.split("Bearer ")[1]
+
+        return None
+
     def get_token(self, request: Request, credentials: Optional[HTTPAuthorizationCredentials] = None) -> Optional[str]:
         """Get token from cookies first, then fallback to header"""
         # Try cookies first
@@ -114,8 +129,11 @@ async def get_current_user(
         value = player_doc.get(field, "0")
         if isinstance(value, str):
             try:
-                player_doc[field] = float(crypto.decrypt(value))
+                player_doc[field] = float(json.loads(crypto.decrypt(value)))
+                print("Decrypted",field,player_doc[field])
             except Exception:
+                print("Error decrypting",field)
+                print("Error",value)
                 player_doc[field] = 0.0
         else:
             player_doc[field] = float(value)
@@ -127,7 +145,7 @@ async def get_current_user(
             val = gems_value.get(color, "0")
             if isinstance(val, str):
                 try:
-                    decrypted_gems[color] = int(crypto.decrypt(val))
+                    decrypted_gems[color] = int(json.loads(crypto.decrypt(val)))
                 except Exception:
                     decrypted_gems[color] = 0
             else:

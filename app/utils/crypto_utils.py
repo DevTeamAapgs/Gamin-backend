@@ -20,21 +20,31 @@ def encrypt_player_fields(player_dict: dict, crypto: AESCipher) -> dict:
         if len(keys) == 1:
             key = keys[0]
             if key in player_dict and player_dict[key] is not None:
-                player_dict[key] = crypto.encrypt(str(player_dict[key]))
+                player_dict[key] = crypto.encrypt(json.dumps(player_dict[key]))
         elif len(keys) == 2:
             outer, inner = keys
             if outer in player_dict and isinstance(player_dict[outer], dict):
                 if inner in player_dict[outer] and player_dict[outer][inner] is not None:
-                    player_dict[outer][inner] = crypto.encrypt(str(player_dict[outer][inner]))
+                    player_dict[outer][inner] = crypto.encrypt(json.dumps(player_dict[outer][inner]))
     return player_dict
+
+def safe_float_decrypt(enc_val, crypto):
+    val = crypto.decrypt(enc_val)
+    return float(json.loads(val))
 
 def decrypt_player_fields(data: dict) -> dict:
     crypto = AESCipher()
     try:
-        data["token_balance"] = float(crypto.decrypt(data.get("token_balance", "0")))
-        data["total_tokens_earned"] = float(crypto.decrypt(data.get("total_tokens_earned", "0")))
-        data["total_tokens_spent"] = float(crypto.decrypt(data.get("total_tokens_spent", "0")))
-        data["gems"] = GemType(**json.loads(crypto.decrypt(data.get("gems", "{}"))))
+        data["token_balance"] = safe_float_decrypt(data.get("token_balance", "0"), crypto)
+        data["total_tokens_earned"] = safe_float_decrypt(data.get("total_tokens_earned", "0"), crypto)
+        data["total_tokens_spent"] = safe_float_decrypt(data.get("total_tokens_spent", "0"), crypto)
+        # Decrypt each color in gems
+        gems = data.get("gems", {"blue": "0", "green": "0", "red": "0"})
+        decrypted_gems = {}
+        for color in ["blue", "green", "red"]:
+            enc_val = gems.get(color, "0")
+            decrypted_gems[color] = int(json.loads(crypto.decrypt(enc_val)))
+        data["gems"] = GemType(**decrypted_gems)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Decryption error: {str(e)}")
     return data

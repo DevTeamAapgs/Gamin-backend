@@ -178,7 +178,8 @@ async def verify_otp_and_register(
 
         # Convert model to dict
         player_dict = player.model_dump(exclude_none=True)
-        
+        print("player_dict",player_dict)
+        print("token_balance",crypto.encrypt(str(1000)))
         ENCRYPTED_FIELDS = [
             "token_balance", "total_tokens_earned", "total_tokens_spent",
             "gems.blue", "gems.red", "gems.green"
@@ -420,7 +421,7 @@ async def get_current_player(request: Request, current_user: PlayerInfoSchema = 
             raise HTTPException(status_code=401, detail="Invalid token payload")
 
         print("player_id", player_id)
-        
+        print("player_info",current_user)
         # Use the already decrypted current_user data instead of fetching again
         response = PlayerResponse(
             id=str(current_user.id),
