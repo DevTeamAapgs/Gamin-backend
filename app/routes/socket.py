@@ -336,6 +336,51 @@ async def process_websocket_message(websocket: WebSocket, player, message: dict)
             "timestamp": message.get("timestamp")
         })
     
+    elif message_type == "exit_game":
+        # Finalize session and update DB as on disconnect
+        game_attempt_id = player_game_sessions.pop(str(player.id), None)
+        if game_attempt_id:
+            end_time = datetime.utcnow()
+            game_attempt = await db.game_socket.find_one({"_id": ObjectId(game_attempt_id)})
+            if game_attempt:
+                start_time = game_attempt.get("start_time", end_time)
+                duration = (end_time - start_time).total_seconds()
+                score = game_attempt.get("score", 0)
+                entry_cost = game_attempt.get("entry_cost", 0)
+                token_balance = game_attempt.get("token_balance", 0)
+                gems_spent = game_attempt.get("gems_spent", {"blue": 0, "green": 0, "red": 0})
+                game_type = game_attempt.get("game_type", "main")
+
+                # Calculate rewards
+                tokens_earned = round((entry_cost + token_balance) * (score / 100), 2)
+                gems_earned = (
+                    {k: int(v * (score / 100)) for k, v in gems_spent.items()}
+                    if game_type == "main" else {"blue": 0, "green": 0, "red": 0}
+                )
+
+                await db.game_socket.update_one(
+                    {"_id": ObjectId(game_attempt_id)},
+                    {
+                        "$set": {
+                            "game_status": GameStatus.INACTIVE.value,
+                            "end_time": end_time,
+                            "duration": duration,
+                            "tokens_earned": tokens_earned,
+                            "gems_earned": gems_earned
+                        }
+                    }
+                )
+
+                # Return rewards to player
+                update = {"$inc": {"token_balance": tokens_earned}}
+                if game_type == "main":
+                    update["$inc"].update({
+                        f"gems.{k}": gems_earned[k] for k in gems_earned
+                    })
+                await db.players.update_one({"_id": ObjectId(player.id)}, update)
+        await websocket.send_json({"type": "game_exited", "message": "You have exited the game."})
+        await websocket.close()
+    
     else:
         await websocket.send_json({
             "type": "error",
