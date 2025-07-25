@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from re import A
+from fastapi.responses import JSONResponse
 from traceback import print_tb
 from fastapi import APIRouter, Body, HTTPException, Depends, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -10,23 +11,30 @@ from app.models.player import Player, PlayerCreation,PlayerResponse
 from app.auth.token_manager import token_manager
 from app.auth.cookie_auth import get_current_user, get_current_user_optional
 from app.utils.cookie_utils import set_auth_cookies, clear_auth_cookies
+from app.utils.crypto_utils import encrypt_player_fields
+from app.utils.crypto import AESCipher
+from app.utils.crypto_dependencies import get_crypto_service
 from app.utils.prefix import generate_prefix
 from app.utils.upload_handler import profile_pic_handler
 from app.utils.email_utils import email_manager
 from app.db.mongo import get_database
 from app.core.config import settings
 from datetime import datetime, timedelta
+from app.schemas.player import PlayerInfoSchema
 import logging
 from app.db.mongo import get_database
 from app.auth.cookie_auth import get_current_user
 from typing import Annotated, Callable
 import os
+import json
+from app.models.game import GemType
 import shutil
 from pathlib import Path
-from app.core.enums import PlayerType
+from app.core.enums import PlayerType,MailType
 
 from app.utils.crypto_dependencies import decrypt_body
-from app.models.adminschemas import TokenResponse, ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
+from app.schemas.admin_curd_schemas import TokenResponse
+from app.schemas.admin_curd_schemas import ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
 from pathlib import Path
 from bson import ObjectId
 from passlib.context import CryptContext
@@ -62,87 +70,164 @@ async def cleanup_user_temp_files_on_logout(player_id: str):
     except Exception as e:
         logger.error(f"Cleanup failed for user {player_id}: {e}")
 
-@router.post("/register", response_model=TokenResponse)
-async def register_player(
-    request: Request, 
-    response: Response, 
-    # player_data: PlayerCreate ,
-    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)), 
-    db: AsyncIOMotorDatabase = Depends(get_database),
-
+@router.post("/register")
+async def request_registration_otp(
+    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Register a new player."""
     try:
-        # Access request details set by SecurityLoggingMiddleware
-        device_fingerprint = getattr(request.state, 'device_fingerprint', None)
-        client_ip = getattr(request.state, 'client_ip', None)
-        user_agent = getattr(request.state, 'user_agent', None)
-        
-        # Log the request details for debugging
-        logger.info(f"Registration request details - Device: {device_fingerprint}, IP: {client_ip}, User-Agent: {user_agent}")
-        
         # Check if player already exists
         existing_player = await db.players.find_one({
-            "$or": [
-                {"username": player_data.username},
-                {"email": player_data.email}
-               
-            ]
+            "$or": [{"username": player_data.username}, {"email": player_data.email}]
         })
-        
         if existing_player:
-            raise HTTPException(status_code=400, detail="Player Details already exists")
-        player_prefix = await generate_prefix("player", 4, db=db)
+            raise HTTPException(status_code=400, detail="Player already exists")
 
+        # Generate OTP
+        otp = email_manager.generate_otp()
+        otp_expiry = email_manager.get_otp_expiry()
 
-        # Create new player
-        player = PlayerCreation(**{
-            "username": player_data.username,
-            "email": player_data.email,
-            "password_hash": get_password_hash(player_data.password),
-            "device_fingerprint": device_fingerprint,
-            "ip_address": client_ip,
-            "player_prefix":player_prefix
-        })
-        
-        
-        # Save to database
-        result = await db.players.insert_one(player.model_dump())
+        encrypted_otp = email_manager.encrypt_data(otp)
+        encrypted_expiry = email_manager.encrypt_data(otp_expiry.isoformat())
 
-        player_id = result.inserted_id
-        
-        # Create session and tokens with enhanced security details
-        session = await token_manager.create_player_session(
-           { "id":player_id, **player.model_dump()}, device_fingerprint or "unknown", client_ip or "unknown"
+        # Store OTP and user info in temporary collection
+        await db.new_players.update_one(
+            {"email": player_data.email},
+            {
+                "$set": {
+                    "username": player_data.username,
+                    "email": player_data.email,
+                    "otp": encrypted_otp,
+                    "otp_expire_time": encrypted_expiry,
+                    "updated_on": datetime.utcnow(),
+                }
+            },
+            upsert=True
         )
-        
-        print("session",session)
-        # Generate tokens
-        access_token = token_manager.create_access_token({"sub": str(player_id), "wallet": player.wallet_address })
+       
+        # Send email
+        email_sent = await email_manager.send_otp_email(
+            player_data.email, player_data.username, otp,MailType.PLAYERREGISTER.value
+        )
+        if not email_sent:
+            raise HTTPException(status_code=500, detail="Failed to send OTP email")
+
+        return {"message": "OTP sent to your email. Please verify to complete registration."}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Request OTP failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send OTP")
+
+@router.post("/register/verify", response_model=TokenResponse)
+async def verify_otp_and_register(
+    request: Request,
+    response: Response,
+    player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    crypto: AESCipher = Depends(get_crypto_service),
+):
+    try:
+        device_fingerprint = getattr(request.state, 'device_fingerprint', None)
+        client_ip = getattr(request.state, 'client_ip', None)
+
+        temp_user = await db.new_players.find_one({"email": player_data.email})
+        if not temp_user:
+            raise HTTPException(status_code=404, detail="OTP not found or expired")
+
+        stored_otp = email_manager.decrypt_data(temp_user["otp"])
+        otp_expiry_str = email_manager.decrypt_data(temp_user["otp_expire_time"])
+        otp_expiry = datetime.fromisoformat(otp_expiry_str)
+        print("stored otp",stored_otp)
+        print("player_data.otp",player_data.otp)
+        if player_data.otp != stored_otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+        if datetime.utcnow() > otp_expiry:
+            raise HTTPException(status_code=400, detail="OTP has expired")
+
+        # OTP is valid → Register player
+        player_prefix = await generate_prefix("player", 4, db=db)
+        player_id = ObjectId()
+
+        player = PlayerCreation(
+            id=player_id,
+            username=player_data.username,
+            email=player_data.email,
+            password_hash=get_password_hash(player_data.password),
+            device_fingerprint=device_fingerprint,
+            ip_address=client_ip,
+            player_prefix=player_prefix,
+            player_type=PlayerType.PLAYER,
+            is_banned=False,
+            ban_reason=None,
+            is_active=True,
+            status=1,
+            fk_role_id=None,
+            created_on=datetime.utcnow(),
+            updated_on=datetime.utcnow(),
+            created_by=None,
+            wallet_address=None,
+            token_balance=0,
+            total_games_played=0,
+            total_tokens_earned=0,
+            total_tokens_spent=0,
+            last_login=None,
+            profile_photo=None
+        )
+
+        # Convert model to dict
+        player_dict = player.model_dump(exclude_none=True)
+        print("player_dict",player_dict)
+        print("token_balance",crypto.encrypt(str(1000)))
+        ENCRYPTED_FIELDS = [
+            "token_balance", "total_tokens_earned", "total_tokens_spent",
+            "gems.blue", "gems.red", "gems.green"
+        ]
+        for field in ENCRYPTED_FIELDS:
+            keys = field.split(".")
+            if len(keys) == 1:
+                key = keys[0]
+                if key in player_dict and player_dict[key] is not None:
+                    player_dict[key] = crypto.encrypt(str(player_dict[key]))
+            elif len(keys) == 2:
+                outer, inner = keys
+                if outer in player_dict and isinstance(player_dict[outer], dict):
+                    if inner in player_dict[outer] and player_dict[outer][inner] is not None:
+                        player_dict[outer][inner] = crypto.encrypt(str(player_dict[outer][inner]))
+        # Encrypt required fields before saving
+        encrypted_fields = player_dict
+
+        # Insert encrypted player into DB
+        await db.players.insert_one(encrypted_fields)
+
+        # Clean up temp user
+        await db.new_players.delete_one({"_id": temp_user["_id"]}) 
+
+        session = await token_manager.create_player_session(
+            {"id": str(player_id), **player.model_dump()},
+            device_fingerprint or "unknown",
+            client_ip or "unknown"
+        )
+
+        access_token = token_manager.create_access_token({"sub": str(player_id), "wallet": player.wallet_address})
         refresh_token = session.refresh_token
-        
-        logger.info(f"New player registered: {player.username} from IP: {client_ip} with device: {device_fingerprint}")
-        
-        # Set cookies
         set_auth_cookies(response, access_token, refresh_token)
-        
-        token_response = TokenResponse(
+
+        return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in=settings.access_token_expire_minutes * 60
         )
-        return token_response
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Registration failed: {e}")
-        if(result.inserted_id):
-            await db.players.delete_one({"_id": result.inserted_id})
-        raise HTTPException(status_code=500, detail="Registration failed")
+        logger.error(f"OTP verification failed: {e}")
+        raise HTTPException(status_code=500, detail="OTP verification failed")
 
 @router.post("/login", response_model=TokenResponse)
-async def login_player(  request: Request, response: Response, player_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
+async def login_player(request: Request, response: Response, player_data: AdminLogin = Depends(decrypt_body(AdminLogin)), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Login existing player."""
     try:
         # Access request details set by SecurityLoggingMiddleware
@@ -150,11 +235,40 @@ async def login_player(  request: Request, response: Response, player_data: Admi
         client_ip = getattr(request.state, 'client_ip', None)
         user_agent = getattr(request.state, 'user_agent', None)
         
-        
         # Find player by wallet address
         player_doc = await db.players.find_one({"email": player_data.username , "player_type":PlayerType.PLAYER})
         if not player_doc:
             raise HTTPException(status_code=404, detail="Player not found")
+
+        crypto = get_crypto_service()
+        # Decrypt numeric fields
+        for field in ["token_balance", "total_tokens_earned", "total_tokens_spent"]:
+            value = player_doc.get(field, "0")
+            if isinstance(value, str):
+                try:
+                    player_doc[field] = float(crypto.decrypt(value))
+                except Exception:
+                    player_doc[field] = 0.0
+            else:
+                player_doc[field] = float(value)
+
+        # Decrypt gems
+        gems_value = player_doc.get("gems", {})
+        if isinstance(gems_value, dict):
+            decrypted_gems = {}
+            for color in ["blue", "green", "red"]:
+                val = gems_value.get(color, "0")
+                if isinstance(val, str):
+                    try:
+                        decrypted_gems[color] = int(crypto.decrypt(val))
+                    except Exception:
+                        decrypted_gems[color] = 0
+                else:
+                    decrypted_gems[color] = int(val)
+            player_doc["gems"] = GemType(**decrypted_gems)
+        else:
+            player_doc["gems"] = GemType(blue=0, green=0, red=0)
+
         player = Player(**player_doc)
         
         # Check if player is banned
@@ -299,38 +413,32 @@ async def logout(request: Request, response: Response, db: AsyncIOMotorDatabase 
         raise HTTPException(status_code=500, detail="Logout failed")
 
 @router.get("/me", response_model=PlayerResponse)
-async def get_current_player(request: Request, current_user: dict = Depends(get_current_user), db:AsyncIOMotorDatabase = Depends(get_database)):
+async def get_current_player(request: Request, current_user: PlayerInfoSchema = Depends(get_current_user), db:AsyncIOMotorDatabase = Depends(get_database)):
     """Get current player information."""
     try:
-        player_id = current_user.get("sub")
+        player_id = current_user.id
         if not player_id:
             raise HTTPException(status_code=401, detail="Invalid token payload")
-        
 
-        # Get player
-        player_doc = await db.players.find_one({"_id": player_id})
-        if not player_doc:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        player = Player(**player_doc)
-
-        print("player",player)
-        
+        print("player_id", player_id)
+        print("player_info",current_user)
+        # Use the already decrypted current_user data instead of fetching again
         response = PlayerResponse(
-            id=str(player_doc.get("_id")),
-            wallet_address=player.wallet_address,
-            username=player.username,
-            email=player.email,
-            token_balance=player.token_balance,
-            total_games_played=player.total_games_played,
-            total_tokens_earned=player.total_tokens_earned,
-            total_tokens_spent=player.total_tokens_spent,
-            is_active=player.is_active,
-            created_at=player.created_at,
-            last_login=player.last_login
+            id=str(current_user.id),
+            wallet_address=current_user.wallet_address or "",
+            username=current_user.username,
+            email=current_user.email,
+            token_balance=int(current_user.token_balance) if current_user.token_balance is not None else 0,
+            total_games_played=current_user.total_games_played,
+            total_tokens_earned=int(current_user.total_tokens_earned) if current_user.total_tokens_earned is not None else 0,
+            total_tokens_spent=int(current_user.total_tokens_spent) if current_user.total_tokens_spent is not None else 0,
+            gems=current_user.gems,
+            is_active=current_user.is_active,
+            created_at=current_user.created_at.isoformat() if current_user.created_at else None,
+            last_login=current_user.last_login.isoformat() if current_user.last_login else None,
         )
         return response
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -338,6 +446,7 @@ async def get_current_player(request: Request, current_user: dict = Depends(get_
         logger = logging.getLogger("app.routes.auth")
         logger.error(f"Get current player failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to get player information")
+
                         
 @router.post("/forgot-password")
 async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_body(ForgotPasswordRequest)), db: AsyncIOMotorDatabase = Depends(get_database)):
@@ -366,7 +475,7 @@ async def forgot_password(request_data: ForgotPasswordRequest = Depends(decrypt_
             }
         )
         # Send OTP email
-        email_sent = await email_manager.send_otp_email(request_data.email, user_doc.get("username", "User"), otp)
+        email_sent = await email_manager.send_otp_email(request_data.email, user_doc.get("username", "User"), otp,MailType.FORGOTPASSWORD.value)
         if not email_sent:
             raise HTTPException(status_code=500, detail="Failed to send OTP email")
         logger.info(f"OTP sent to {request_data.email} for user {user_doc['_id']}")

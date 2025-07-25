@@ -35,7 +35,7 @@ class AESCipher:
 
             encrypted = iv + ct_bytes  
             return base64.b64encode(encrypted).decode('utf-8')
-
+    
     def decrypt(self, enc_data: str) -> str:
         try:
             raw = base64.urlsafe_b64decode(enc_data)
@@ -56,3 +56,5 @@ class AESCipher:
 
         except (ValueError, KeyError, TypeError, Exception) as e:
             raise ValueError(f"Decryption failed: {str(e)}")
+
+    

@@ -40,16 +40,18 @@ class AdminResponse(BaseModel):
     id: str = Field(..., description="User ID")
     username: str = Field(..., description="Username")
     email: str = Field(..., description="Email address")
-    is_admin: bool = Field(..., description="Whether user is an admin")
-    is_active: bool = Field(..., description="Whether user is active")
     status: Optional[int] = None
-    fk_role_id: Optional[str] = None
-    player_prefix: Optional[str] = None
-    wallet_address: Optional[str] = None
+    role_name: Optional[str] = None
     profile_photo: Optional[Dict[str, str | float]] = None
-    created_at: datetime = Field(..., description="Account creation timestamp")
-    last_login: Optional[datetime] = None
-
+   
+class AdminIdResponse(BaseModel):
+    """Admin user response"""
+    id: str = Field(..., description="User ID")
+    username: str = Field(..., description="Username")
+    email: str = Field(..., description="Email address")
+    status: Optional[int] = None
+    profile_photo: Optional[Dict[str, str | float]] = None
+    fk_role_id: Optional[str] = None
 class StatusUpdateRequest(BaseModel):
     """Request model for status updates"""
     status: str = Field(..., description="New status value")
@@ -83,11 +85,8 @@ class AdminUpdateRequest(BaseModel):
     fk_role_id: Optional[str] = Field(None, description="Role ID")
     profile_photo: Optional[Dict[str, str | float]] = Field(None, description="Profile photo information")
 
-class NumericStatusUpdateRequest(BaseModel):
-    """Request model for numeric status updates (0=inactive, 1=active)"""
-    status: Literal[0, 1] = Field(..., description="Status: 0=inactive, 1=active")
 
-class AdminStatusUpdateRequest(NumericStatusUpdateRequest):
+class AdminStatusUpdateRequest(BaseModel):
     """Request model for admin status updates"""
     id: str = Field(..., description="Admin ID")
     status: Literal[0, 1] = Field(..., description="Status: 0=inactive, 1=active")

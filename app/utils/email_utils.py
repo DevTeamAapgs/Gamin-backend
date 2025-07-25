@@ -89,17 +89,16 @@ class EmailManager:
             encoded = base64.b64encode(image_file.read()).decode("utf-8")
             return f"data:image/png;base64,{encoded}"  # or image/jpeg if using JPG
         
-    def _create_email_template(self, username: str, otp: str):
+    def _create_email_template(self, username: str, otp: str,path:str):
         """Generate HTML email template with DODUKU branding using Jinja2."""
         try:
-            template = self.jinja_env.get_template("forgotpassword.html")
+            template = self.jinja_env.get_template(path)
             #otp_digits = ''.join(f'<div class="otp-digit">{digit}</div>' for digit in otp)
             otp_digits = ''.join(f'<div class="otp-digit" style="margin:0 12px;display:inline-block;">{digit}</div>' for digit in otp)
             current_year = datetime.now().year
             return template.render(username=username, otp_digits=otp_digits, current_year=current_year)
         except Exception as e:
             return logger.error(f"Error rendering email template: {e}")
-    
     
     async def send_email(self, to: str, subject: str, content: str) -> bool:
         """Core email sending method"""
@@ -148,11 +147,11 @@ class EmailManager:
         server.login(self.username, self.password)
         return server
     
-    async def send_otp_email(self, email: str, username: str, otp: str) -> bool:
+    async def send_otp_email(self, email: str, username: str, otp: str,path:str) -> bool:
         """Send OTP email"""
+        print(path,"path")
         subject = "Your Verification Code"
-        content = self._create_email_template(username, otp)
+        content = self._create_email_template(username, otp,path)
         return await self.send_email(email, subject, content)
-
 # Global instance
 email_manager = EmailManager()       
