@@ -74,14 +74,14 @@ async def websocket_endpoint(
                             "message": "Invalid JSON format"
                         })
                     return
-        except Exception as e:
-            logger.error(f"WebSocket error for player {player.username}: {e}")
-            if websocket.application_state == websocket.application_state.CONNECTED:
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Internal server error"
-                })
-            return
+                except Exception as e:
+                    logger.error(f"WebSocket error for player {player.username}: {e}")
+                    if websocket.application_state == websocket.application_state.CONNECTED:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Internal server error"
+                        })
+                    return
         finally:
             # Finalize game session and reward on disconnect
             game_attempt_id = player_game_sessions.pop(str(player.id), None)

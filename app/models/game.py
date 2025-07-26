@@ -36,6 +36,11 @@ class GameAttempt(BaseDocument):
     game_data: Dict[str, Any] = Field(default_factory=dict)
     replay_data: List[Dict[str, Any]] = Field(default_factory=list)
     completion_percentage: float = Field(default=0.0)
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    game_type: Optional[str] = None
 
 class GameAction(BaseDocument):
     fk_game_attempt_id: ObjectId

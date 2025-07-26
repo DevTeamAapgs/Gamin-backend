@@ -56,7 +56,7 @@ class CookieAuth:
             return auth_header.split("Bearer ")[1]
 
         return None
-
+    
     def get_token(self, request: Request, credentials: Optional[HTTPAuthorizationCredentials] = None) -> Optional[str]:
         """Get token from cookies first, then fallback to header"""
         # Try cookies first
