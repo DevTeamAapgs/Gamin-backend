@@ -107,7 +107,7 @@ class TokenManager:
             logger.error(f"Layered token verification failed: {e}")
             return None
 
-    async def create_player_session(self, player, device_fingerprint: str, ip_address: str) -> PlayerSession:
+    async def create_player_session(self, player, device_fingerprint: str, ip_address: str, user_agent: str) -> PlayerSession:
         db = get_database()
 
         # Ensure player has an ID
@@ -123,6 +123,7 @@ class TokenManager:
             "refresh_token": refresh_token,
             "device_fingerprint": device_fingerprint,
             "ip_address": ip_address,
+            "user_agent": user_agent,
             "expires_at": datetime.utcnow() + timedelta(days=self.refresh_token_expire_days)
         })
         await db.sessions.insert_one(session.model_dump())

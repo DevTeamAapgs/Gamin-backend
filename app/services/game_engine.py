@@ -1,240 +1,243 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-# from app.models.game import Game, GameAttempt, GameLevel
+from bson import ObjectId
+import logging
+import random
+import math
 from app.models.player import Player
 from app.db.mongo import get_database
 from app.core.config import settings
-import logging
-import random
+
+DIFFICULTY_CONFIG = {
+    "alpha": 0.5,
+    "decay_rate": 0.98,
+    "metric_weights": {
+        "accuracy": 0.4,
+        "speed": 0.3,
+        "efficiency": 0.3
+    },
+    "max_time": 60.0,
+    "min_difficulty": 1.0,
+    "max_difficulty": 2.0,
+    "lookback_days": 30,
+    "decay_lambda": 0.1
+}
 
 logger = logging.getLogger(__name__)
 
 class GameEngine:
     def __init__(self):
         self.db = get_database()
-    
-    async def calculate_reward(self, completion_percentage: float, entry_cost: float, reward_multiplier: float) -> float:
-        """Calculate reward based on completion percentage."""
-        if completion_percentage >= 80:
-            reward = entry_cost * reward_multiplier * 1.5
-        elif completion_percentage >= 50:
-            reward = entry_cost * reward_multiplier * 0.75
-        else:
-            reward = entry_cost * reward_multiplier * 0.3
-        
-        return round(reward, 2)
-    
-    async def calculate_adaptive_difficulty(self, player_id: str, game_type: str, level: int, attempt_number: int) -> float:
-        """Calculate adaptive difficulty based on player performance."""
-        # Get player's recent performance
-        recent_games = await self.db.games.find({
+
+    async def calculate_adaptive_difficulty(
+        self, player_id: str, fk_game_level_id: str  ) -> float:
+        now = datetime.utcnow()
+        config = DIFFICULTY_CONFIG
+        previous_difficulty = 1.0
+
+        recent_games = await self.db.game_attempt.find({
             "player_id": player_id,
-            "game_type": game_type,
-            "level": level
-        }).sort("created_at", -1).limit(5).to_list(length=5)
-        
+            "fk_game_level_id": ObjectId(fk_game_level_id),
+            "start_time": {"$gte": now - timedelta(days=config["lookback_days"])}
+        }).to_list(length=None)
+
         if not recent_games:
-            return 1.0  # Base difficulty
-        
-        # Calculate average completion percentage
-        avg_completion = sum(game.get("completion_percentage", 0) for game in recent_games) / len(recent_games)
-        
-        # Adjust difficulty based on performance
-        if avg_completion > 80:
-            # Player is doing well, increase difficulty
-            difficulty_multiplier = 1.0 + (attempt_number * 0.2)
-        elif avg_completion > 50:
-            # Player is doing okay, slight increase
-            difficulty_multiplier = 1.0 + (attempt_number * 0.1)
-        else:
-            # Player is struggling, keep difficulty manageable
-            difficulty_multiplier = 1.0 + (attempt_number * 0.05)
-        
-        return min(difficulty_multiplier, 2.0)  # Cap at 2x difficulty
-    
+            return config["min_difficulty"]
+
+        acc_scores, speed_scores, eff_scores, weights = [], [], [], []
+
+        for game in recent_games:
+            comp = game.get("completion_percentage", 0)
+            duration = game.get("duration", config["max_time"]) or config["max_time"]
+            moves = game.get("moves_count", 1)
+            start_time = game.get("start_time", now)
+            days_ago = max((now - start_time).days, 0)
+            weight = math.exp(-config["decay_lambda"] * days_ago)
+
+            acc = comp / 100
+            speed = max(0, 1 - duration / config["max_time"])
+            eff = min(1.0, comp / moves)
+
+            acc_scores.append(acc)
+            speed_scores.append(speed)
+            eff_scores.append(eff)
+            weights.append(weight)
+
+        def wavg(vals, wts):
+            return sum(v * w for v, w in zip(vals, wts)) / sum(wts) if wts else 0
+
+        acc_score = wavg(acc_scores, weights)
+        speed_score = wavg(speed_scores, weights)
+        eff_score = wavg(eff_scores, weights)
+
+        raw_score = (
+            config["metric_weights"]["accuracy"] * acc_score +
+            config["metric_weights"]["speed"] * speed_score +
+            config["metric_weights"]["efficiency"] * eff_score
+        )
+
+        raw_difficulty = 1.0 + raw_score
+        ema_difficulty = config["alpha"] * raw_difficulty + (1 - config["alpha"]) * previous_difficulty
+
+        last_played = max([g["start_time"] for g in recent_games])
+        idle_days = max((now - last_played).days, 0)
+        decay = config["decay_rate"] ** idle_days
+        final = ema_difficulty * decay
+
+        return round(min(max(final, config["min_difficulty"]), config["max_difficulty"]), 2)
+
     async def generate_game_state(self, game_type: str, level: int, difficulty: float) -> Dict[str, Any]:
-        """Generate game state based on type, level, and difficulty."""
         if game_type == "color_match":
             return await self._generate_color_match_state(level, difficulty)
         elif game_type == "tube_filling":
             return await self._generate_tube_filling_state(level, difficulty)
         else:
             raise ValueError(f"Unknown game type: {game_type}")
+
+    def calculate_capacity(self, level: int, difficulty: float, base_capacity: int = 4, max_capacity: int = 8, difficulty_multiplier: float = 0.5) -> int:
+        """Calculate adaptive tube capacity based on level and difficulty."""
+        raw_capacity = base_capacity + level * difficulty * difficulty_multiplier
+        return min(int(round(raw_capacity)), max_capacity)
     
+    def generate_flutter_hex_colors(self, n: int) -> List[str]:
+        """Generate n distinct Flutter-compatible hex colors in 0xFFRRGGBB format."""
+        colors = []
+        for _ in range(n):
+            rgb = random.randint(0x222222, 0xEEEEEE)
+            hex_color = f"0xFF{rgb:06X}"  # Flutter format: ARGB
+            while hex_color in colors:
+                rgb = random.randint(0x222222, 0xEEEEEE)
+                hex_color = f"0xFF{rgb:06X}"
+            colors.append(hex_color)
+        return colors
+
+
     async def _generate_color_match_state(self, level: int, difficulty: float) -> Dict[str, Any]:
-        """Generate color match game state."""
-        # Base configuration
+        """Generate color match game state with hex colors."""
         base_colors = 3
-        base_tubes = 4
-        base_capacity = 4
-        
-        # Scale with level and difficulty
-        colors = min(base_colors + level, 8)
-        tubes = base_tubes + level
-        capacity = base_capacity + int(level * 0.5)
-        
-        # Generate color distribution
+        max_colors = 8
+
+        colors_count = min(int(round(base_colors + level * difficulty)), max_colors)
+        capacity = self.calculate_capacity(level, difficulty)
+
+        max_empty_tubes = 2
+        min_empty_tubes = 1
+        empty_tube_buffer = max(min_empty_tubes, max_empty_tubes - int((difficulty - 1.0) * 2))
+        total_tubes = colors_count + empty_tube_buffer
+
+        # Generate unique hex colors
+        hex_colors = self.generate_flutter_hex_colors(colors_count)
+
         color_distribution = []
-        for i in range(colors):
-            color_count = capacity
-            color_distribution.extend([i] * color_count)
-        
-        # Shuffle colors
+        for color in hex_colors:
+            color_distribution.extend([color] * capacity)
+
         random.shuffle(color_distribution)
-        
-        # Distribute to tubes
+
         tubes_state = []
-        for i in range(tubes):
-            tube_colors = color_distribution[i * capacity:(i + 1) * capacity]
-            tubes_state.append(tube_colors)
-        
+        for i in range(total_tubes):
+            start = i * capacity
+            end = start + capacity
+            tube = color_distribution[start:end] if start < len(color_distribution) else []
+            tubes_state.append(tube)
+
         return {
             "game_type": "color_match",
             "level": level,
             "difficulty": difficulty,
-            "colors": colors,
-            "tubes": tubes,
+            "colors": colors_count,
+            "hex_color_map": hex_colors,
+            "tubes": total_tubes,
             "capacity": capacity,
             "tubes_state": tubes_state,
-            "target_state": self._solve_color_match(tubes_state)
+            "target_state": self._solve_color_match(tubes_state, capacity)
         }
-    
+    def _solve_color_match(self, tubes_state: List[List[int]], capacity: int = 4) -> List[List[int]]:
+        color_buckets = {}
+        for tube in tubes_state:
+            for color in tube:
+                color_buckets.setdefault(color, []).append(color)
+
+        solution = []
+        for color, items in sorted(color_buckets.items()):
+            for i in range(0, len(items), capacity):
+                solution.append(items[i:i + capacity])
+
+        while len(solution) < len(tubes_state):
+            solution.append([])
+
+        return solution
+
     async def _generate_tube_filling_state(self, level: int, difficulty: float) -> Dict[str, Any]:
-        """Generate tube filling game state."""
-        # Base configuration
-        base_tubes = 3
-        base_liquids = 2
-        
-        # Scale with level and difficulty
-        tubes = base_tubes + level
-        liquids = base_liquids + int(level * 0.5)
-        
-        # Generate liquid distribution
-        liquid_distribution = []
-        for i in range(liquids):
-            liquid_count = tubes
-            liquid_distribution.extend([i] * liquid_count)
-        
-        # Shuffle liquids
-        random.shuffle(liquid_distribution)
-        
-        # Distribute to tubes
-        tubes_state = []
-        for i in range(tubes):
-            tube_liquids = liquid_distribution[i * tubes:(i + 1) * tubes]
-            tubes_state.append(tube_liquids)
-        
-        return {
-            "game_type": "tube_filling",
-            "level": level,
-            "difficulty": difficulty,
-            "tubes": tubes,
-            "liquids": liquids,
-            "tubes_state": tubes_state,
-            "target_state": self._solve_tube_filling(tubes_state)
-        }
-    
-    def _solve_color_match(self, tubes_state: List[List[int]]) -> List[List[int]]:
-        """Solve color match puzzle (simplified)."""
-        # This is a simplified solver - in production, implement proper puzzle solving
-        solution = []
-        for tube in tubes_state:
-            # Sort colors in each tube
-            sorted_tube = sorted(tube, reverse=True)
-            solution.append(sorted_tube)
-        return solution
-    
-    def _solve_tube_filling(self, tubes_state: List[List[int]]) -> List[List[int]]:
-        """Solve tube filling puzzle (simplified)."""
-        # This is a simplified solver - in production, implement proper puzzle solving
-        solution = []
-        for tube in tubes_state:
-            # Sort liquids in each tube
-            sorted_tube = sorted(tube, reverse=True)
-            solution.append(sorted_tube)
-        return solution
-    
+        return {}
+
     async def validate_game_completion(self, game_id: str, submitted_state: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate game completion and detect cheating."""
         game = await self.db.games.find_one({"_id": game_id})
         if not game:
             raise ValueError("Game not found")
-        
-        # Get game state
+
         game_state = game.get("game_state", {})
         target_state = game_state.get("target_state", [])
-        
-        # Calculate completion percentage
+
         completion_percentage = self._calculate_completion_percentage(submitted_state, target_state)
-        
-        # Check for cheating patterns
         cheat_detection = await self._detect_cheating(game_id, submitted_state)
-        
+
         return {
             "completion_percentage": completion_percentage,
             "is_valid": completion_percentage >= 0,
             "cheat_detected": cheat_detection["detected"],
             "cheat_reason": cheat_detection["reason"]
         }
-    
+
     def _calculate_completion_percentage(self, submitted_state: Dict[str, Any], target_state: List[List[int]]) -> float:
-        """Calculate completion percentage based on submitted vs target state."""
         if not submitted_state or not target_state:
             return 0.0
-        
+
         submitted_tubes = submitted_state.get("tubes_state", [])
         if len(submitted_tubes) != len(target_state):
             return 0.0
-        
-        correct_tubes = 0
-        total_tubes = len(target_state)
-        
-        for i, target_tube in enumerate(target_state):
-            if i < len(submitted_tubes) and submitted_tubes[i] == target_tube:
-                correct_tubes += 1
-        
-        return (correct_tubes / total_tubes) * 100
-    
+
+        submitted_flat = [color for tube in submitted_tubes for color in tube]
+        target_flat = [color for tube in target_state for color in tube]
+
+        match_count = 0
+        used_indices = set()
+
+        for color in submitted_flat:
+            for i, t_color in enumerate(target_flat):
+                if i not in used_indices and color == t_color:
+                    match_count += 1
+                    used_indices.add(i)
+                    break
+
+        return (match_count / len(target_flat)) * 100 if target_flat else 0.0
+
     async def _detect_cheating(self, game_id: str, submitted_state: Dict[str, Any]) -> Dict[str, Any]:
-        """Detect cheating patterns in game submission."""
-        # Get game replay data
         replay = await self.db.replays.find_one({"game_id": game_id})
         if not replay:
             return {"detected": False, "reason": None}
-        
+
         actions = replay.get("action_sequence", [])
         timing_data = replay.get("timing_data", {})
-        
-        # Check for speed hacks
+
         if self._detect_speed_hack(timing_data):
             return {"detected": True, "reason": "Speed hack detected"}
-        
-        # Check for repetitive patterns
+
         if self._detect_repetitive_patterns(actions):
             return {"detected": True, "reason": "Repetitive pattern detected"}
-        
-        # Check for unnatural movements
+
         if self._detect_unnatural_movements(replay.get("mouse_movements", [])):
             return {"detected": True, "reason": "Unnatural movements detected"}
-        
+
         return {"detected": False, "reason": None}
-    
+
     def _detect_speed_hack(self, timing_data: Dict[str, Any]) -> bool:
-        """Detect speed hacks based on timing data."""
-        # Simplified speed hack detection
-        # In production, implement more sophisticated detection
-        return False
-    
-    def _detect_repetitive_patterns(self, actions: List[Dict[str, Any]]) -> bool:
-        """Detect repetitive action patterns."""
-        # Simplified pattern detection
-        # In production, implement more sophisticated detection
-        return False
-    
-    def _detect_unnatural_movements(self, mouse_movements: List[Dict[str, Any]]) -> bool:
-        """Detect unnatural mouse movements."""
-        # Simplified movement detection
-        # In production, implement more sophisticated detection
         return False
 
-game_engine = GameEngine() 
+    def _detect_repetitive_patterns(self, actions: List[Dict[str, Any]]) -> bool:
+        return False
+
+    def _detect_unnatural_movements(self, mouse_movements: List[Dict[str, Any]]) -> bool:
+        return False
+
+game_engine = GameEngine()

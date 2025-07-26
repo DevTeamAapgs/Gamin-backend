@@ -119,7 +119,7 @@ class MenuItem(BaseModel):
     submenu: List['MenuItem'] = Field(default_factory=list)
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 MenuItem.update_forward_refs()
 

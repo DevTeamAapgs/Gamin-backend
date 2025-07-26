@@ -6,13 +6,12 @@ from app.core.enums import GameType
 from app.models.base import BaseDocument
 from app.utils.pyobjectid import PyObjectId
 from app.models.game import GemType
-
 class GameConfigurationModel(BaseDocument):
     game_name: str = Field(..., description="The name of the game")
     game_description: str = Field(..., description="The description of the game")
     game_banner: list[dict] = Field(default_factory=list, description="The description of the game")
     game_icon: dict = Field(default_factory=dict, description="The description of the game")
-    game_type: GameType = Field(default=GameType.MainGame)  
+    
     
 
 class AddDetails(BaseModel):
@@ -27,7 +26,7 @@ class GameLevelConfigurationModel(BaseDocument):
     entry_cost: float
     reward_coins: float = Field(default=1)
     
-    level_type: int
+    level_type: GameType   
     entry_cost_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     reward_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     
