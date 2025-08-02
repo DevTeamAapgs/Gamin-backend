@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field
-from app.core.enums import GameType, PlayerType
+from app.core.enums import LevelType, PlayerType
 from app.models.base import BaseDocument, PyObjectId
 from app.models.game import GemType, GameStatus
 class RoleResponse(BaseModel):
@@ -170,7 +170,7 @@ class PlayerAdminGameAttemptResponse(BaseModel):
     game_name: str
     level_name: str
     level_number: int
-    level_type: GameType
+    level_type: LevelType
     game_status: GameStatus
     # created_on: datetime
     end_time: Optional[datetime]

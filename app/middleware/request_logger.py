@@ -316,11 +316,12 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
     
     def _generate_device_fingerprint(self, request: Request) -> str:
         """Generate device fingerprint from request headers."""
+        print("request",request)
         fingerprint_data = {
             "user_agent": request.headers.get("user-agent", ""),
             "accept_language": request.headers.get("accept-language", ""),
             "accept_encoding": request.headers.get("accept-encoding", ""),
         }
-        
+        print("data",fingerprint_data)
         fingerprint_string = json.dumps(fingerprint_data, sort_keys=True)
         return hashlib.sha256(fingerprint_string.encode()).hexdigest() 

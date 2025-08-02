@@ -13,8 +13,9 @@ from app.core.config import settings
 from app.db.mongo import connect_to_mongo, close_mongo_connection
 from app.middleware.encryption_middleware import ResponseEncryptionMiddleware
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
+from app.socketio_server import socket_app  
 # Import routes
-from app.routes import auth, player, game, admin, socket, roles, admincrud, common, gaming_configuration_route, game_level_configuration_route
+from app.routes import auth, player, game, admin, roles, admincrud, common, gaming_configuration_route, game_level_configuration_route
 from app.routes import player_admin
 
 from app.utils.crypto import AESCipher
@@ -194,13 +195,14 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(player.router, prefix="/api/v1/player", tags=["Player"])
 app.include_router(game.router, prefix="/api/v1/game", tags=["Game"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
-app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])
+# app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])  # Removed - migrated to Socket.IO
 app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
 app.include_router(admincrud.router, prefix="/api/v1/admincrud", tags=["Admin CRUD"])
 app.include_router(gaming_configuration_route.router, prefix="/api/v1/gaming-configuration", tags=["Gaming Configuration"])
 app.include_router(game_level_configuration_route.router, prefix="/api/v1/game-level-configuration", tags=["Game Level Configuration"])
 app.include_router(common.router, prefix="/api/v1", tags=["Common"])
 app.include_router(player_admin.router, prefix="/api/v1/player-admin", tags=["Player Admin"])
+app.mount("/ws", socket_app)
 
 
 

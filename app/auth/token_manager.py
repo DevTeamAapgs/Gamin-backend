@@ -149,7 +149,7 @@ class TokenManager:
 
         result = await db.sessions.update_one(
             {"token_hash": token_hash},
-            {"$set": {"is_active": False}}
+            {"$set": {"status": 0}}
         )
 
         return result.modified_count > 0
@@ -159,7 +159,7 @@ class TokenManager:
 
         result = await db.sessions.update_many(
             {"expires_at": {"$lt": datetime.utcnow()}},
-            {"$set": {"is_active": False}}
+            {"$set": {"status": 0}}
         )
 
         return result.modified_count

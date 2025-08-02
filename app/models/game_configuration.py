@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from pydantic import BaseModel, Field
-from app.core.enums import GameType
+from app.core.enums import LevelType
 from app.models.base import BaseDocument
 from app.utils.pyobjectid import PyObjectId
 from app.models.game import GemType
@@ -26,7 +26,7 @@ class GameLevelConfigurationModel(BaseDocument):
     entry_cost: float
     reward_coins: float = Field(default=1)
     
-    level_type: GameType   
+    level_type: LevelType   
     entry_cost_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     reward_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     

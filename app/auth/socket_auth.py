@@ -7,6 +7,7 @@ import logging
 from bson import ObjectId
 from app.auth.cookie_auth import cookie_auth
 from app.utils.crypto_dependencies import get_crypto_service
+from app.core.constants import GEM_COLORS
 logger = logging.getLogger(__name__)
 
 class WebSocketAuthManager:
@@ -59,7 +60,7 @@ class WebSocketAuthManager:
             gems_value = player_data.get("gems", {})
             if isinstance(gems_value, dict):
                 decrypted_gems = {}
-                for color in ["blue", "green", "red"]:
+                for color in GEM_COLORS:
                     val = gems_value.get(color, "0")
                     if isinstance(val, str):
                         try:

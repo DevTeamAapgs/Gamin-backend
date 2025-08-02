@@ -3,13 +3,13 @@ from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from pydantic import BaseModel, Field
 
-from app.core.enums import GameType
+from app.core.enums import LevelType
 from app.models.base import PyObjectId
 
 
 class GameConfigurationSaveSchema(BaseModel):
     game_name: str = Field(..., description="The name of the game")
-    game_type: GameType = Field(..., description="The type of the game")
+    game_type: LevelType = Field(..., description="The type of the game")
     game_description: str = Field(..., description="The description of the game")
     game_banner: list[dict] = Field(default_factory=list, description="The description of the game")
     game_icon: dict = Field(default_factory=dict, description="The description of the game")
@@ -17,7 +17,7 @@ class GameConfigurationSaveSchema(BaseModel):
 class GameConfigurationUpdateSchema(BaseModel):
     id: str = Field(..., description="The id of the game")
     game_name: str = Field(..., description="The name of the game")
-    game_type: GameType = Field(..., description="The type of the game")
+    game_type: LevelType = Field(..., description="The type of the game")
     game_description: str = Field(..., description="The description of the game")
     game_banner: list[dict] = Field(default_factory=list, description="The description of the game")
     game_icon: dict = Field(default_factory=dict, description="The description of the game")
@@ -26,7 +26,7 @@ class GameConfigurationUpdateSchema(BaseModel):
 class GameConfigurationResponse(BaseModel):
     id: Optional[ObjectId] = Field(..., description="The id of the game")
     game_name: str = Field(..., description="The name of the game")
-    game_type: GameType = Field(..., description="The type of the game")
+    game_type: LevelType = Field(..., description="The type of the game")
     game_description: str = Field(..., description="The description of the game")
     game_banner: Optional[list[dict]] = Field(default_factory=list, description="The description of the game")
     game_icon: Optional[dict] = Field(default_factory=dict, description="The description of the game")

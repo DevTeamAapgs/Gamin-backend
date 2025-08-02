@@ -31,7 +31,7 @@ from app.models.game import GemType
 import shutil
 from pathlib import Path
 from app.core.enums import PlayerType,MailType
-
+from app.core.constants import GEM_COLORS
 from app.utils.crypto_dependencies import decrypt_body
 from app.schemas.admin_curd_schemas import TokenResponse
 from app.schemas.admin_curd_schemas import ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
@@ -265,7 +265,7 @@ async def login_player(request: Request, response: Response, player_data: AdminL
         gems_value = player_doc.get("gems", {})
         if isinstance(gems_value, dict):
             decrypted_gems = {}
-            for color in ["blue", "green", "red"]:
+            for color in GEM_COLORS:
                 val = gems_value.get(color, "0")
                 if isinstance(val, str):
                     try:
