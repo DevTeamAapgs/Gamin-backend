@@ -7,7 +7,7 @@ from app.core.enums import Status
 from app.db.mongo import get_database
 from app.auth.cookie_auth import verify_admin
 from app.schemas.game_configuration_schema import GameConfigurationGridResponse, GameConfigurationSaveSchema
-from app.utils.upload_handler import move_file_from_temp_to_uploads
+from app.utils.upload_handler import move_file_from_temp_to_uploads, unzip_and_move_to_game_dir
 from passlib.context import CryptContext
 from datetime import datetime
 import logging
@@ -57,7 +57,7 @@ async def list_admins(
             {
                 "$facet": {
                     "results": [
-                        {"$sort": {"created_on": -1}},
+                        {"$sort": {"updated_on": -1}},
                         {"$skip": skip},
                         {"$limit": count},
                         {
@@ -65,8 +65,9 @@ async def list_admins(
                             "_id": 0,
                             "id": "$_id",
                             "game_name": 1,
-                            "game_type": 1,
+                            "game_icon": 1,
                             "game_description": 1,
+                            "game_type_name": 1,
                             "status": 1,
                         }
                         }
@@ -79,7 +80,7 @@ async def list_admins(
         ]
 
         result = await db.game_configuration.aggregate(pipeline).to_list(length=1)
-
+        print(result[0]["results"])
         if result:
             response_data = {
                 "results": result[0]["results"],
@@ -115,13 +116,26 @@ async def create_game_configuration(
             for banner in game_configuration_data.game_banner:
                 game_banner.append(move_file_from_temp_to_uploads(banner))
         
+        # Handle game assets (zip file)
+        game_assets = None
+        if game_configuration_data.game_assets:
+            try:
+                game_assets = unzip_and_move_to_game_dir(
+                    game_configuration_data.game_assets, 
+                    game_name=game_configuration_data.game_name
+                )
+            except Exception as e:
+                logger.error(f"Failed to process game assets: {e}")
+                raise HTTPException(status_code=400, detail=f"Failed to process game assets: {str(e)}")
+        
         # Create user document
         user_doc = {
             "game_name": game_configuration_data.game_name,
             "game_icon": game_icon,
             "game_banner": game_banner,
-            "game_type": game_configuration_data.game_type,
             "game_description": game_configuration_data.game_description,
+            "game_type_name": game_configuration_data.game_type_name,
+            "game_assets": game_assets,
             "created_by": current_admin.get("_id"),
             "updated_by": current_admin.get("_id"),
         }
@@ -169,15 +183,31 @@ async def update_game_configuration(
             for banner in game_configuration_data.game_banner:
                 game_banner.append(move_file_from_temp_to_uploads(banner))
 
+        # Handle game assets (zip file)
+        game_assets = None
+        if game_configuration_data.game_assets:
+            try:
+                game_assets = unzip_and_move_to_game_dir(
+                    game_configuration_data.game_assets, 
+                    game_name=game_configuration_data.game_name
+                )
+            except Exception as e:
+                logger.error(f"Failed to process game assets: {e}")
+                raise HTTPException(status_code=400, detail=f"Failed to process game assets: {str(e)}")
+
         update_doc = {
             "game_name": game_configuration_data.game_name,
             "game_icon": game_icon,
             "game_banner": game_banner,
-            "game_type": game_configuration_data.game_type,
             "game_description": game_configuration_data.game_description,
+            "game_type_name": game_configuration_data.game_type_name,
             "updated_by": current_admin.get("_id"),
             "updated_on": datetime.utcnow(),
         }
+
+        # Only add game_assets to update if it was provided
+        if game_assets is not None:
+            update_doc["game_assets"] = game_assets
 
         result = await db.game_configuration.update_one(
             {"_id": ObjectId(game_id)},
@@ -204,7 +234,20 @@ async def get_game_configuration(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     try:
-        game = await db.game_configuration.find_one({"_id": ObjectId(game_id)}, projection={"_id": 0, "id": "$_id", "game_name": 1, "game_type": 1, "game_description": 1, "game_banner": 1, "game_icon": 1, "status": 1})
+        game = await db.game_configuration.find_one(
+            {"_id": ObjectId(game_id)}, 
+            projection={
+                "_id": 0, 
+                "id": "$_id", 
+                "game_name": 1,  
+                "game_description": 1, 
+                "game_type_name": 1,
+                "game_banner": 1, 
+                "game_icon": 1, 
+                "game_assets": 1,
+                "status": 1
+            }
+        )
         if not game:
             raise HTTPException(status_code=404, detail="Game configuration not found")
         return GameConfigurationResponse(**game).model_dump(by_alias=True)

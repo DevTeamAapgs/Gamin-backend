@@ -58,6 +58,11 @@ class GameType(IntEnum):
     SubGame = 2
 
 
+class GameTypeName(IntEnum):
+    """Game type name enum for different game categories"""
+    FREE = 1
+    COLORSORTINTUBE = 2
+
 class GameStatus(Enum):
     ACTIVE = 1
     COMPLETED = 2

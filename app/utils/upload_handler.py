@@ -1,6 +1,7 @@
 import os
 import shutil
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Optional, Dict, Any, Set
 from fastapi import UploadFile, HTTPException
@@ -84,6 +85,7 @@ class FileUploadHandler:
             size_kb = round(temp_path.stat().st_size / 1024, 2)
             return {
                 "uploadfilename": temp_filename,
+                "original_filename": file.filename,
                 "uploadurl": f"public/temp_uploads/{temp_filename}",
                 "filesize_kb": size_kb
             }
@@ -210,6 +212,130 @@ generic_file_handler = FileUploadHandler(
     file_type="generic"
 )
 
+def unzip_and_move_to_game_dir(file_info: dict, game_name: str = None) -> dict:
+    """
+    Unzips a file and moves its contents to a game directory.
+    
+    Args:
+        file_info (dict): Dict with keys 'uploadfilename', 'uploadurl', 'filesize_kb'.
+        game_name (str): Name of the game directory. If None, uses the filename without extension.
+    
+    Returns:
+        dict: Updated file info with the path to the unzipped game directory.
+        
+    Raises:
+        HTTPException: If file is not found or unzipping fails.
+    """
+    from fastapi import HTTPException
+    from pathlib import Path
+    import zipfile
+    import shutil
+    import os
+
+    uploadfilename = file_info.get("uploadfilename")
+    uploadurl = file_info.get("uploadurl")
+    filesize_kb = file_info.get("filesize_kb")
+
+    if not (isinstance(uploadfilename, str) and uploadfilename):
+        raise HTTPException(status_code=400, detail="Invalid uploadfilename")
+    if not (isinstance(uploadurl, str) and uploadurl):
+        raise HTTPException(status_code=400, detail="Invalid uploadurl")
+
+    # Determine the source file path
+    if "temp_uploads" in uploadurl:
+        source_file_path = Path(uploadurl)
+    elif "uploads" in uploadurl:
+        source_file_path = Path(uploadurl)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid uploadurl format")
+
+    if not source_file_path.exists():
+        raise HTTPException(status_code=404, detail="Source file not found")
+
+    # Validate that it's a zip file
+    if not source_file_path.suffix.lower() == '.zip':
+        raise HTTPException(status_code=400, detail="File is not a zip archive")
+
+    # Determine game directory name
+    if game_name:
+        game_dir_name = game_name.replace(" ", "_").lower()
+    else:
+        game_dir_name = source_file_path.stem.replace(" ", "_").lower()
+
+    # Create game directory path
+    game_dir_path = Path("public/games") / game_dir_name
+    
+    try:
+        # Create games directory if it doesn't exist
+        games_base_dir = Path("public/games")
+        games_base_dir.mkdir(exist_ok=True)
+        
+        # Remove existing game directory if it exists
+        if game_dir_path.exists():
+            shutil.rmtree(game_dir_path)
+        
+        # Create new game directory
+        game_dir_path.mkdir(exist_ok=True)
+        
+        # Extract zip file
+        with zipfile.ZipFile(source_file_path, 'r') as zip_ref:
+            zip_ref.extractall(game_dir_path)
+        
+        # Get list of extracted files
+        extracted_files = []
+        for root, dirs, files in os.walk(game_dir_path):
+            for file in files:
+                file_path = Path(root) / file
+                relative_path = file_path.relative_to(game_dir_path)
+                extracted_files.append(str(relative_path))
+        
+        # Calculate total size of extracted files
+        total_size_kb = 0
+        for file_path in game_dir_path.rglob('*'):
+            if file_path.is_file():
+                total_size_kb += file_path.stat().st_size / 1024
+        
+        logger.info(f"Successfully unzipped {len(extracted_files)} files to {game_dir_path}")
+        
+        return {
+            "uploadfilename": uploadfilename,
+            "original_filename": file_info.get("original_filename", ""),
+            "uploadurl": uploadurl,
+            "filesize_kb": filesize_kb,
+            "game_directory": f"public/games/{game_dir_name}",
+            "game_directory_name": game_dir_name,
+            "extracted_files": extracted_files,
+            "extracted_files_count": len(extracted_files),
+            "extracted_size_kb": round(total_size_kb, 2),
+            "game_url": f"public/games/{game_dir_name}"
+        }
+        
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid zip file")
+    except Exception as e:
+        # Clean up on error
+        if game_dir_path.exists():
+            shutil.rmtree(game_dir_path)
+        logger.error(f"Error unzipping file: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to unzip file: {str(e)}")
+
+# Usage example:
+# file_info = {
+#     "uploadfilename": "file_685f794d79d0e77a1e25d5a2_018f5646.zip",
+#     "uploadurl": "public/temp_uploads/file_685f794d79d0e77a1e25d5a2_018f5646.zip",
+#     "filesize_kb": 16.86
+# }
+# 
+# # Unzip and move to game directory
+# result = unzip_and_move_to_game_dir(file_info, game_name="MyGame")
+# print(result)
+# # Output will include:
+# # - game_directory: "public/games/mygame"
+# # - extracted_files: ["index.html", "assets/style.css", ...]
+# # - extracted_files_count: 5
+# # - extracted_size_kb: 45.2
+# # - game_url: "public/games/mygame"
+
 def move_file_from_temp_to_uploads(file_info: dict) -> dict:
     """
     Checks if the file is in temp_uploads, moves it to uploads if needed, and returns the updated JSON structure.
@@ -245,6 +371,7 @@ def move_file_from_temp_to_uploads(file_info: dict) -> dict:
         logger.info(f"File moved from temp_uploads to uploads: {uploadfilename}")
         return {
             "uploadfilename": uploadfilename,
+            "original_filename": file_info.get("original_filename", ""),
             "uploadurl": f"public/uploads/{uploadfilename}",
             "filesize_kb": filesize_kb
         }
@@ -255,6 +382,7 @@ def move_file_from_temp_to_uploads(file_info: dict) -> dict:
         # Already in uploads, just return as is
         return {
             "uploadfilename": uploadfilename,
+            "original_filename": file_info.get("original_filename", ""),
             "uploadurl": uploadurl,
             "filesize_kb": filesize_kb
         }

@@ -186,7 +186,7 @@ async def get_form_dependency(
             # Get specific menu permissions
             response_data.append({
                 "id": menu_id,
-                "menu_name": "UI.PARENT_DETAILS",
+                "menu_name": "Parent Details",
                 "permissions": await get_permissions(menu_id, db)
             })
             response_data.extend(await get_submenus(menu_id, db))
@@ -214,12 +214,14 @@ async def create_role(
 ):
     """Create a new role"""
     try:
+        print(role_data,"role_data")
         # Check if role already exists (without company filter)
         existing_role = await db.roles.find_one({
             "role_name": role_data.role_name
         })
         
         if existing_role:
+            print("Role already exists")
             raise HTTPException(status_code=400, detail="Role already exists")
         
         # Create role using the model (without company ID)
@@ -242,7 +244,7 @@ async def create_role(
         
         logger.info(f"Role created: {role_data.role_name} by {current_user.get('sub')}")
         
-        response_data = {"message" : "Role created successfully",role_data:role_data, "id": str(result.inserted_id)}
+        response_data = {"message" : "Role created successfully"}
         return response_data
         
     except HTTPException:
@@ -282,7 +284,7 @@ async def update_role(
             permissions=[]
         )
         # Set the ID after creation
-        updated_role.id = role_id
+        updated_role._id = role_id
         updated_role.set_permissions_from_dict(role_data.permissions)
         
         # Set audit fields for update

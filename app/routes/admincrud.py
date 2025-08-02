@@ -54,7 +54,7 @@ async def list_admins(
         status = params.get("status")
         role = params.get("role")
         query: Dict[str, Any] = {"player_type": PlayerType.ADMINEMPLOYEE}  # Allow both SUPERADMIN and ADMINEMPLOYEE
-        print("search string ",search_string)
+        print("search string ",params)
         
         if status is not None:
             try:

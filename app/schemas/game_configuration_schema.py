@@ -2,34 +2,37 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from bson import ObjectId
 from pydantic import BaseModel, Field
+from app.core.enums import GameTypeName
 
-from app.core.enums import GameType
 from app.models.base import PyObjectId
 
 
 class GameConfigurationSaveSchema(BaseModel):
     game_name: str = Field(..., description="The name of the game")
-    game_type: GameType = Field(..., description="The type of the game")
     game_description: str = Field(..., description="The description of the game")
+    game_type_name: GameTypeName = Field(..., description="The type name of the game")
     game_banner: list[dict] = Field(default_factory=list, description="The description of the game")
     game_icon: dict = Field(default_factory=dict, description="The description of the game")
+    game_assets: Optional[dict] = Field(default=None, description="The game assets zip file info")
 
 class GameConfigurationUpdateSchema(BaseModel):
     id: str = Field(..., description="The id of the game")
     game_name: str = Field(..., description="The name of the game")
-    game_type: GameType = Field(..., description="The type of the game")
     game_description: str = Field(..., description="The description of the game")
+    game_type_name: GameTypeName = Field(..., description="The type name of the game")
     game_banner: list[dict] = Field(default_factory=list, description="The description of the game")
     game_icon: dict = Field(default_factory=dict, description="The description of the game")
+    game_assets: Optional[dict] = Field(default=None, description="The game assets zip file info")
 
 
 class GameConfigurationResponse(BaseModel):
     id: Optional[ObjectId] = Field(..., description="The id of the game")
     game_name: str = Field(..., description="The name of the game")
-    game_type: GameType = Field(..., description="The type of the game")
     game_description: str = Field(..., description="The description of the game")
+    game_type_name: GameTypeName = Field(..., description="The type name of the game")
     game_banner: Optional[list[dict]] = Field(default_factory=list, description="The description of the game")
     game_icon: Optional[dict] = Field(default_factory=dict, description="The description of the game")
+    game_assets: Optional[dict] = Field(default=None, description="The game assets directory info")
     status: int = Field(..., description="The status of the game")
 
     class Config:

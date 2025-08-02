@@ -4,7 +4,7 @@ from datetime import datetime
 from app.db.mongo import get_database
 from app.auth.cookie_auth import get_current_user
 from app.schemas.player import PlayerInfoSchema
-from app.utils.upload_handler import FileUploadHandler
+from app.utils.upload_handler import  generic_file_handler
 import logging
 from app.models.player import Player
 from pathlib import Path
@@ -15,7 +15,7 @@ from app.schemas.admin_curd_schemas import FileDeleteRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-file_handler = FileUploadHandler()
+# generic_file_handler = FileUploadHandler()
 
 # POST /common/file-upload - Upload file
 @router.post("/common/file-upload")
@@ -43,7 +43,7 @@ async def upload_file(
         #await cleanup_user_temp_files(user_id, existing_user)
         
         # Upload file to temp_uploads (includes 5MB size validation)
-        file_info = await file_handler.upload_to_temp(file, user_id)
+        file_info = await generic_file_handler.upload_to_temp(file, user_id)
         
         logger.info(f"File uploaded to temp by user: {user_id}")
         
@@ -93,7 +93,7 @@ async def cleanup_user_temp_files(user_id: str, existing_user: dict):
             
             # Delete the orphaned file using the upload handler
             try:
-                deleted = file_handler.delete_file_by_path(file_path)
+                deleted = generic_file_handler.delete_file_by_path(file_path)
                 if deleted:
                     deleted_files.append(file_path)
                     logger.info(f"Deleted orphaned temp file: {file_path}")
@@ -153,7 +153,7 @@ async def delete_file(
             raise HTTPException(status_code=400, detail="Invalid filename")
         
         # Delete file using file path
-        deleted = file_handler.delete_file_by_path(file_url_path)
+        deleted = generic_generic_file_handler.delete_file_by_path(file_url_path)
         
         if deleted:
             # Check if this file is the user's profile picture
