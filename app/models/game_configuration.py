@@ -27,7 +27,7 @@ class GameLevelConfigurationModel(BaseDocument):
     entry_cost: float
     reward_coins: float = Field(default=1)
     
-    level_type: GameType   
+    level_type: LevelType   
     entry_cost_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     reward_gems: GemType = Field(default=GemType(blue=0, green=0, red=0))
     

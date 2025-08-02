@@ -36,7 +36,7 @@ class GameEngine:
         previous_difficulty = 1.0
 
         recent_games = await self.db.game_attempt.find({
-            "player_id": player_id,
+            "fk_player_id": ObjectId(player_id),
             "fk_game_level_id": ObjectId(fk_game_level_id),
             "start_time": {"$gte": now - timedelta(days=config["lookback_days"])}
         }).to_list(length=None)
@@ -56,7 +56,7 @@ class GameEngine:
 
             acc = comp / 100
             speed = max(0, 1 - duration / config["max_time"])
-            eff = min(1.0, comp / moves)
+            eff = min(1.0, comp / moves) if moves else 0.0
 
             acc_scores.append(acc)
             speed_scores.append(speed)

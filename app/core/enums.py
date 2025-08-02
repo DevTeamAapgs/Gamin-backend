@@ -53,7 +53,7 @@ class MailType(str, Enum):  # manually combine str + Enum
 
 
 
-class GameType(IntEnum):
+class LevelType(IntEnum):
     MainGame = 1
     SubGame = 2
 

@@ -31,7 +31,7 @@ from app.models.game import GemType
 import shutil
 from pathlib import Path
 from app.core.enums import PlayerType,MailType
-
+from app.core.constants import GEM_COLORS
 from app.utils.crypto_dependencies import decrypt_body
 from app.schemas.admin_curd_schemas import TokenResponse
 from app.schemas.admin_curd_schemas import ForgotPasswordRequest, VerifyOTPRequest, ResetPasswordRequest
@@ -73,7 +73,7 @@ async def cleanup_user_temp_files_on_logout(player_id: str):
 @router.post("/register")
 async def request_registration_otp(
     player_data: PlayerCreate = Depends(decrypt_body(PlayerCreate)),
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),crypto: AESCipher = Depends(get_crypto_service)
 ):
     try:
         # Check if player already exists
@@ -89,6 +89,10 @@ async def request_registration_otp(
 
         encrypted_otp = email_manager.encrypt_data(otp)
         encrypted_expiry = email_manager.encrypt_data(otp_expiry.isoformat())
+        print("token_balance",crypto.encrypt(str(1000)))
+        print("gems",crypto.encrypt(str(50)))
+        print("gems",crypto.encrypt(str(50)))
+        print("gems",crypto.encrypt(str(50)))
 
         # Store OTP and user info in temporary collection
         await db.new_players.update_one(
@@ -180,6 +184,10 @@ async def verify_otp_and_register(
         player_dict = player.model_dump(exclude_none=True)
         print("player_dict",player_dict)
         print("token_balance",crypto.encrypt(str(1000)))
+        print("gems",crypto.encrypt(str(50)))
+        print("gems",crypto.encrypt(str(50)))
+        print("gems",crypto.encrypt(str(50)))
+        
         ENCRYPTED_FIELDS = [
             "token_balance", "total_tokens_earned", "total_tokens_spent",
             "gems.blue", "gems.red", "gems.green"
@@ -257,7 +265,7 @@ async def login_player(request: Request, response: Response, player_data: AdminL
         gems_value = player_doc.get("gems", {})
         if isinstance(gems_value, dict):
             decrypted_gems = {}
-            for color in ["blue", "green", "red"]:
+            for color in GEM_COLORS:
                 val = gems_value.get(color, "0")
                 if isinstance(val, str):
                     try:

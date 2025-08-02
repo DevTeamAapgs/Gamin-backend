@@ -8,6 +8,7 @@ from Crypto.Hash import SHA256
 from app.utils.crypto import AESCipher
 from fastapi import HTTPException
 from app.models.game import GemType
+from app.core.constants import GEM_COLORS
 from typing import Union
 import json
 
@@ -55,7 +56,7 @@ def decrypt_player_fields(data: dict) -> dict:
         # Decrypt each color in gems
         gems = data.get("gems", {"blue": "0", "green": "0", "red": "0"})
         decrypted_gems = {}
-        for color in ["blue", "green", "red"]:
+        for color in GEM_COLORS:
             enc_val = gems.get(color, "0")
             decrypted_gems[color] = int(safe_float_decrypt(enc_val, crypto))
         data["gems"] = GemType(**decrypted_gems)

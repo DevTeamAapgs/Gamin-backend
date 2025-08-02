@@ -21,6 +21,7 @@ class GameAttempt(BaseDocument):
     fk_game_level_id: ObjectId
     ip_address: Optional[str] = None
     device_fingerprint: Optional[str] = None
+    socket_id: Optional[str] = None  # Socket.IO session ID
     level_number: int
     game_status: GameStatus = Field(default=GameStatus.ACTIVE)
     score: int = Field(default=0)
@@ -36,6 +37,11 @@ class GameAttempt(BaseDocument):
     game_data: Dict[str, Any] = Field(default_factory=dict)
     replay_data: List[Dict[str, Any]] = Field(default_factory=list)
     completion_percentage: float = Field(default=0.0)
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    level_type: Optional[int] = None
 
 class GameAction(BaseDocument):
     fk_game_attempt_id: ObjectId
