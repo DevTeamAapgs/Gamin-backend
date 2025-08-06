@@ -8,6 +8,7 @@ httpx==0.28.1
 python-jose[cryptography]==3.5.0
 cryptography==42.0.7
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 redis==5.1.0
 celery==5.3.6
 websockets==12.0
@@ -18,3 +19,7 @@ dnspython==2.5.0
 pydantic[email]==2.11.7
 email-validator
 pycryptodome == 3.23.0
+Pillow==10.4.0
+requests==2.32.3
+fastapi-mail==1.4.1
+Jinja2

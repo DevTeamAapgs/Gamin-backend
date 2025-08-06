@@ -78,46 +78,6 @@ class RolesModel(BaseDocument):
             for menu_id, can_access in menu_permissions.items():
                 self.add_permission(module_id, menu_id, can_access)
 
-# Pydantic models for API requests/responses
-class RoleCreate(BaseModel):
-    role_name: str = Field(..., description="Role name")
-    permissions: Dict[str, Dict[str, bool]] = Field(default={}, description="Permissions dictionary")
-
-class RoleUpdate(BaseModel):
-    id: str = Field(..., description="Role ID")
-    role_name: str = Field(..., description="Role name")
-    permissions: Dict[str, Dict[str, bool]] = Field(default={}, description="Permissions dictionary")
-
-class RolePatch(BaseModel):
-    id: str = Field(..., description="Role ID")
-    status: int = Field(..., description="Status (0=inactive, 1=active)")
-
-class RoleResponse(BaseModel):
-    id: str = Field(..., description="Role ID")
-    role_name: str = Field(..., description="Role name")
-    permissions: Dict[str, Dict[str, bool]] = Field(default={}, description="Permissions dictionary")
-    status: int = Field(..., description="Status")
-    # created_on: datetime = Field(..., description="Created date")
-    # updated_on: datetime = Field(..., description="Updated date")
-    
-    model_config = {
-        "json_encoders": {ObjectId: str}
-    }
-
-class GridDataRequest(BaseModel):
-    page: int = Field(..., description="Page number")
-    count: int = Field(..., description="Items per page")
-    searchString: str = Field(default="", description="Search string")
-
-class GridDataResponse(BaseModel):
-    data: List[RoleResponse] = Field(..., description="Role data")
-    total: int = Field(..., description="Total count")
-    page: int = Field(..., description="Current page")
-    per_page: int = Field(..., description="Items per page") 
-
-
-
-
 
 
     

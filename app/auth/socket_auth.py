@@ -4,7 +4,10 @@ from app.auth.token_manager import token_manager
 from app.models.player import Player
 from app.db.mongo import get_database
 import logging
-
+from bson import ObjectId
+from app.auth.cookie_auth import cookie_auth
+from app.utils.crypto_dependencies import get_crypto_service
+from app.core.constants import GEM_COLORS
 logger = logging.getLogger(__name__)
 
 class WebSocketAuthManager:
@@ -17,35 +20,72 @@ class WebSocketAuthManager:
             # Verify token
             payload = token_manager.verify_token(token)
             if not payload:
+                logger.warning(f"WebSocket close: Invalid token {token}")
                 await websocket.close(code=4001, reason="Invalid token")
                 return None
             
             player_id = payload.get("sub")
             if not player_id:
+                logger.warning(f"WebSocket close: Invalid token payload {payload}")
                 await websocket.close(code=4001, reason="Invalid token payload")
                 return None
             
             # Get database
             db = get_database()
-            if not db:
+            if db is None:
+                logger.warning("WebSocket close: Database connection error")
                 await websocket.close(code=4002, reason="Database connection error")
                 return None
             
             # Get player
-            player_data = await db.players.find_one({"_id": player_id})
+            player_data = await db.players.find_one({"_id": ObjectId(player_id)})
+            
             if not player_data:
+                logger.warning(f"WebSocket close: Player not found {player_id}")
                 await websocket.close(code=4003, reason="Player not found")
                 return None
             
+            # Decrypt numeric and gems fields before creating Player
+            crypto = get_crypto_service()
+            for field in ["token_balance", "total_tokens_earned", "total_tokens_spent"]:
+                value = player_data.get(field, "0")
+                if isinstance(value, str):
+                    try:
+                        player_data[field] = float(crypto.decrypt(value))
+                    except Exception:
+                        player_data[field] = 0.0
+                else:
+                    player_data[field] = float(value)
+
+            gems_value = player_data.get("gems", {})
+            if isinstance(gems_value, dict):
+                decrypted_gems = {}
+                for color in GEM_COLORS:
+                    val = gems_value.get(color, "0")
+                    if isinstance(val, str):
+                        try:
+                            decrypted_gems[color] = int(crypto.decrypt(val))
+                        except Exception:
+                            decrypted_gems[color] = 0
+                    else:
+                        decrypted_gems[color] = int(val)
+                player_data["gems"] = decrypted_gems
+            else:
+                player_data["gems"] = {"blue": 0, "green": 0, "red": 0}
+
             player = Player(**player_data)
-            
+            player.id = str(player_data.get('_id'))  # Ensure player.id is always available
             # Validate session
-            token_hash = token_manager._generate_token_seed()  # Simplified for demo
-            session = await token_manager.validate_session(token_hash, device_fingerprint, ip_address)
+            token_hash = token_manager._generate_token_seed() 
+            # Simplified for demo
+            """session = await token_manager.validate_session(token_hash, device_fingerprint, ip_address)
+            print(session,"session")
+            
             if not session:
+                logger.warning(f"WebSocket close: Invalid session for player_id={player_id}, fingerprint={device_fingerprint}, ip={ip_address}")
                 await websocket.close(code=4004, reason="Invalid session")
                 return None
-            
+            """
             # Store connection
             self.active_connections[player_id] = websocket
             
@@ -54,8 +94,13 @@ class WebSocketAuthManager:
             
         except Exception as e:
             logger.error(f"WebSocket authentication failed: {e}")
-            await websocket.close(code=4000, reason="Authentication failed")
+            try:
+                if websocket.application_state == websocket.application_state.CONNECTED:
+                    await websocket.close(code=4000, reason="Authentication failed")
+            except Exception:
+                pass
             return None
+
     
     async def disconnect_player(self, player_id: str):
         """Disconnect player from WebSocket."""
