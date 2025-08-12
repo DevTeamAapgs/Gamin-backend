@@ -1,29 +1,36 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Body
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.schemas.game import GameStart, GameSubmit, GameResponse, GameLevelResponse
-from app.models.game import Game, GameAttempt, GameReplay
+from app.models.game import GameAttempt, GameReplay
 from app.models.player import Player
 from app.auth.token_manager import token_manager
+from app.auth.cookie_auth import get_current_user
 from app.services.game_engine import game_engine
 from app.services.analytics import analytics_service
 from app.db.mongo import get_database
 from datetime import datetime
 import logging
+from typing import Callable, Annotated
+
+from app.utils.crypto_dependencies import decrypt_body
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
 
 @router.post("/start", response_model=GameResponse)
-async def start_game(game_data: GameStart, credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def start_game(
+    request: Request, 
+    game_data: GameStart = Depends(decrypt_body(GameStart)), 
+    current_user: dict = Depends(get_current_user)
+):
     """Start a new game."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        # Get player from current user
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
-        player_id = payload.get("sub")
         db = get_database()
         
         # Get player
@@ -53,7 +60,7 @@ async def start_game(game_data: GameStart, credentials: HTTPAuthorizationCredent
         )
         
         # Create game
-        game = Game(
+        game = GameAttempt(
             player_id=player.id,
             game_type=game_data.game_type,
             level=game_data.level,
@@ -92,7 +99,7 @@ async def start_game(game_data: GameStart, credentials: HTTPAuthorizationCredent
         
         logger.info(f"Game started: {game_data.game_type} level {game_data.level} by {player.username}")
         
-        return GameResponse(
+        response = GameResponse(
             id=str(game.id),
             player_id=str(game.player_id),
             game_type=game.game_type,
@@ -107,6 +114,7 @@ async def start_game(game_data: GameStart, credentials: HTTPAuthorizationCredent
             end_time=game.end_time,
             created_at=game.created_at
         )
+        return response
         
     except HTTPException:
         raise
@@ -115,15 +123,18 @@ async def start_game(game_data: GameStart, credentials: HTTPAuthorizationCredent
         raise HTTPException(status_code=500, detail="Failed to start game")
 
 @router.post("/submit")
-async def submit_game(game_data: GameSubmit, credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def submit_game(
+    request: Request, 
+    game_data: GameSubmit = Depends(decrypt_body(GameSubmit)), 
+    current_user: dict = Depends(get_current_user)
+):
     """Submit game completion."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        # Get player from current user
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
-        player_id = payload.get("sub")
         db = get_database()
         
         # Get game
@@ -131,10 +142,10 @@ async def submit_game(game_data: GameSubmit, credentials: HTTPAuthorizationCrede
         if not game_doc:
             raise HTTPException(status_code=404, detail="Game not found")
         
-        game = Game(**game_doc)
+        game = GameAttempt(**game_doc)
         
         # Verify game belongs to player
-        if str(game.player_id) != player_id:
+        if str(game.fk_player_id) != player_id:
             raise HTTPException(status_code=403, detail="Game does not belong to player")
         
         # Validate game completion
@@ -145,7 +156,7 @@ async def submit_game(game_data: GameSubmit, credentials: HTTPAuthorizationCrede
         if validation_result["cheat_detected"]:
             # Handle cheating
             await db.players.update_one(
-                {"_id": game.player_id},
+                {"_id": game.fk_player_id},
                 {"$set": {"is_banned": True, "ban_reason": validation_result["cheat_reason"]}}
             )
             raise HTTPException(status_code=403, detail="Cheating detected")
@@ -176,12 +187,12 @@ async def submit_game(game_data: GameSubmit, credentials: HTTPAuthorizationCrede
                 "token_balance": reward
             }
         }
-        await db.players.update_one({"_id": game.player_id}, player_update)
+        await db.players.update_one({"_id": game.fk_player_id}, player_update)
         
         # Create transaction for reward
         if reward > 0:
             reward_transaction = {
-                "player_id": game.player_id,
+                "player_id": game.fk_player_id,
                 "transaction_type": "reward",
                 "amount": reward,
                 "game_id": game.id,
@@ -194,21 +205,20 @@ async def submit_game(game_data: GameSubmit, credentials: HTTPAuthorizationCrede
         # Save replay data
         replay = GameReplay(
             game_id=game.id,
-            player_id=game.player_id,
+            fk_player_id=game.fk_player_id,
             replay_data=game_data.dict(),
             action_sequence=game_data.actions,
             mouse_movements=game_data.mouse_movements,
             click_positions=game_data.click_positions,
             timing_data=game_data.timing_data,
             device_info=game_data.device_info,
-            ip_address="unknown",  # Get from request context
-            created_at=datetime.utcnow()
+            ip_address="unknown"
         )
         await db.replays.insert_one(replay.dict(by_alias=True))
         
         # Track analytics
         await analytics_service.track_game_action(
-            str(game.id), str(game.player_id), {
+            str(game.id), str(game.fk_player_id), {
                 "type": "game_completion",
                 "completion_percentage": completion_percentage,
                 "reward": reward,
@@ -218,12 +228,13 @@ async def submit_game(game_data: GameSubmit, credentials: HTTPAuthorizationCrede
         
         logger.info(f"Game submitted: {completion_percentage}% completion, {reward} tokens earned")
         
-        return {
+        response_data = {
             "game_id": str(game.id),
             "completion_percentage": completion_percentage,
             "reward": reward,
             "status": game_update["status"]
         }
+        return response_data
         
     except HTTPException:
         raise
@@ -232,14 +243,14 @@ async def submit_game(game_data: GameSubmit, credentials: HTTPAuthorizationCrede
         raise HTTPException(status_code=500, detail="Failed to submit game")
 
 @router.get("/levels", response_model=list[GameLevelResponse])
-async def get_game_levels(game_type: str = "color_match"):
+async def get_game_levels(request: Request, game_type: str = "color_match"):
     """Get available game levels."""
     try:
         db = get_database()
         
         levels = await db.game_levels.find({"game_type": game_type, "is_active": True}).to_list(length=100)
         
-        return [
+        response_data = [
             GameLevelResponse(
                 id=str(level["_id"]),
                 level_number=level["level_number"],
@@ -255,27 +266,26 @@ async def get_game_levels(game_type: str = "color_match"):
             )
             for level in levels
         ]
+        return response_data
         
     except Exception as e:
         logger.error(f"Get game levels failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to get game levels")
 
 @router.get("/history")
-async def get_game_history(credentials: HTTPAuthorizationCredentials = Depends(security), limit: int = 10):
+async def get_game_history(request: Request, current_user: dict = Depends(get_current_user), limit: int = 10):
     """Get player's game history."""
     try:
-        # Verify token and get player
-        payload = token_manager.verify_token(credentials.credentials)
-        if not payload:
-            raise HTTPException(status_code=401, detail="Invalid access token")
+        player_id = current_user.get("sub")
+        if not player_id:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         
-        player_id = payload.get("sub")
         db = get_database()
         
-        # Get games
-        games = await db.games.find({"player_id": player_id}).sort("created_at", -1).limit(limit).to_list(length=limit)
+        # Get player's games
+        games = await db.games.find({"fk_player_id": player_id}).sort("created_at", -1).limit(limit).to_list(length=limit)
         
-        return [
+        response_data = [
             {
                 "id": str(game["_id"]),
                 "game_type": game["game_type"],
@@ -289,9 +299,56 @@ async def get_game_history(credentials: HTTPAuthorizationCredentials = Depends(s
             }
             for game in games
         ]
+        return response_data
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Get game history failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get game history") 
+        raise HTTPException(status_code=500, detail="Failed to get game history")
+
+@router.get("/leaderboard")
+async def get_game_leaderboard(request: Request, game_type: str = "color_match", level: int = 1, limit: int = 20):
+    """Get leaderboard for specific game type and level."""
+    try:
+        db = get_database()
+        
+        # Get top players for this game type and level
+        pipeline = [
+            {"$match": {"game_type": game_type, "level": level, "status": "completed"}},
+            {"$group": {
+                "_id": "$fk_player_id",
+                "best_completion": {"$max": "$completion_percentage"},
+                "total_games": {"$sum": 1},
+                "total_reward": {"$sum": "$final_reward"}
+            }},
+            {"$sort": {"best_completion": -1}},
+            {"$limit": limit},
+            {"$lookup": {
+                "from": "players",
+                "localField": "_id",
+                "foreignField": "_id",
+                "as": "player"
+            }},
+            {"$unwind": "$player"}
+        ]
+        
+        leaderboard = await db.games.aggregate(pipeline).to_list(length=limit)
+        
+        response_data = [
+            {
+                "rank": i + 1,
+                "player_id": str(entry["_id"]),
+                "username": entry["player"]["username"],
+                "wallet_address": entry["player"]["wallet_address"],
+                "best_completion": entry["best_completion"],
+                "total_games": entry["total_games"],
+                "total_reward": entry["total_reward"]
+            }
+            for i, entry in enumerate(leaderboard)
+        ]
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"Get game leaderboard failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get game leaderboard") 

@@ -186,3 +186,6 @@ grafana/
 *.key
 *.crt
 *.csr 
+
+gameapp/
+./gameapp/

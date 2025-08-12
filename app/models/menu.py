@@ -98,3 +98,16 @@ class PermissionsSchemaGridList(BaseModel):
     model_config = {
         "json_encoders": {ObjectId: str}
     } 
+
+class MenuCard(BaseModel):
+    _id: str
+    menu_order: int
+    menu_name: str
+    menu_value: str
+    menu_type: int
+    fk_parent_id: Optional[str]
+    can_show: int
+    router_url: str
+    menu_icon: str
+    active_urls: List[str]
+    mobile_access: int 

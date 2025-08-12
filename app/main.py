@@ -2,18 +2,25 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
+import socketio
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 import logging
 import uvicorn
 from contextlib import asynccontextmanager
-
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
-from app.db.mongo import connect_to_mongo, close_mongo_connection
+from app.db.mongo import connect_to_mongo, close_mongo_connection, get_database
+from app.middleware.encryption_middleware import ResponseEncryptionMiddleware
 from app.middleware.request_logger import RequestLoggingMiddleware, SecurityMiddleware, SecurityLoggingMiddleware
-
+from app.middleware.static_auth import StaticAuthMiddleware
+from app.routes.socket import setup_socketio_routes
 # Import routes
-from app.routes import auth, player, game, admin, socket, roles
+from app.routes import auth, player, game, admin, roles, admincrud, common, gaming_configuration_route, game_level_configuration_route
+from app.routes import player_admin, player_game
+
+from app.utils.crypto import AESCipher
 
 # Configure logging
 logging.basicConfig(
@@ -40,7 +47,14 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Gaming Platform Backend...")
     await connect_to_mongo()
     logger.info("Gaming Platform Backend started successfully!")
-    
+    db = get_database()
+    try:
+        await db.command("ping")
+        logger.info("✅ MongoDB connection established!")
+    except Exception as e:
+        logger.error(f"❌ MongoDB connection failed: {e}")
+        import sys
+        sys.exit(1)
     yield
     
     # Shutdown
@@ -73,14 +87,25 @@ app = FastAPI(
     }
 )
 
+# Create and mount Socket.IO app
+sio = socketio.AsyncServer(async_mode='asgi',  cors_allowed_origins=["*"],
+    logger=True,
+    engineio_logger=True)
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
+# Setup all Socket.IO routes and event handlers
+setup_socketio_routes(sio, app)
+
+# Add security headers middleware first
+app.mount("/public", StaticFiles(directory="public"), name="public")
+app.add_middleware(StaticAuthMiddleware, protected_prefixes=("/public/games/",))
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
      allow_origins=[
         "http://localhost:4200",
-        "https://*.ngrok-free.app",  # Wildcard for all ngrok URLs
-        "https://*.ngrok.io"        # Additional ngrok domains
+        "https://*.ngrok-free.app", 
+        "https://*.ngrok.io"        
     ],
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods
@@ -98,7 +123,9 @@ app.add_middleware(
     enable_db_logging=True
 )
 
-# # Custom OpenAPI configuration for cookie authentication
+app.add_middleware(ResponseEncryptionMiddleware, crypto=AESCipher(mode="CBC"))
+
+# Custom OpenAPI configuration for cookie authentication
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -110,6 +137,18 @@ def custom_openapi():
         routes=app.routes,
     )
     
+
+      # Add custom header parameter for Swagger (X-Plaintext)
+    openapi_schema["components"]["parameters"] = {
+        "XPlaintext": {
+            "name": "X-Plaintext",
+            "in": "header",
+            "required": False,
+            "schema": {"type": "string", "default": "true"},
+            "description": "Tells the server to skip AES encryption/decryption (used by Swagger)"
+        }
+    }
+
     # Add cookie authentication scheme
     openapi_schema["components"]["securitySchemes"] = {
         "cookieAuth": {
@@ -130,7 +169,7 @@ def custom_openapi():
 
     openapi_schema["security"] = [
         {"cookieAuth": []},
-        # {"bearerAuth": []}
+        {"bearerAuth": []}
     ]
 
     # Add security requirements to protected endpoints
@@ -138,7 +177,10 @@ def custom_openapi():
         for method in openapi_schema["paths"][path]:
             if method.lower() in ["get", "post", "put", "delete", "patch"]:
                 endpoint = openapi_schema["paths"][path][method.lower()]
-                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin","Roles"] for tag in endpoint["tags"]):
+                if "tags" in endpoint and any(tag in ["Authentication", "Player", "Game", "Admin","Roles","Gaming Configuration"] for tag in endpoint["tags"]):
+                    if "parameters" not in endpoint:
+                        endpoint["parameters"] = []
+                        endpoint["parameters"].append({"$ref": "#/components/parameters/XPlaintext"})
                     # if "security" not in endpoint:
                     endpoint["security"] = [
                         {"cookieAuth": []},
@@ -148,41 +190,8 @@ def custom_openapi():
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
-# def custom_openapi():
-#     print("🔧 Generating OpenAPI Schema...")
-#     if app.openapi_schema:
-#         return app.openapi_schema
-
-#     openapi_schema = get_openapi(
-#         title=app.title,
-#         version=app.version,
-#         description=app.description,
-#         routes=app.routes,
-#     )
-
-#     openapi_schema["components"]["securitySchemes"] = {
-#         "cookieAuth": {
-#             "type": "apiKey",
-#             "in": "cookie",
-#             "name": "access_token"
-#         },
-#         "bearerAuth": {
-#             "type": "http",
-#             "scheme": "bearer",
-#             "bearerFormat": "JWT"
-#         }
-#     }
-
-#     openapi_schema["security"] = [
-#         {"cookieAuth": []},
-#         {"bearerAuth": []}
-#     ]
-
-#     app.openapi_schema = openapi_schema
-#     return app.openapi_schema
 
 
-app.openapi = custom_openapi
 
 
 # Global exception handler
@@ -204,8 +213,18 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(player.router, prefix="/api/v1/player", tags=["Player"])
 app.include_router(game.router, prefix="/api/v1/game", tags=["Game"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
-app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])
+# app.include_router(socket.router, prefix="/api/v1/socket", tags=["WebSocket"])  # Removed - migrated to Socket.IO
 app.include_router(roles.router, prefix="/api/v1/roles", tags=["Roles"])
+app.include_router(admincrud.router, prefix="/api/v1/admincrud", tags=["Admin CRUD"])
+app.include_router(gaming_configuration_route.router, prefix="/api/v1/gaming-configuration", tags=["Gaming Configuration"])
+app.include_router(game_level_configuration_route.router, prefix="/api/v1/game-level-configuration", tags=["Game Level Configuration"])
+app.include_router(common.router, prefix="/api/v1", tags=["Common"])
+app.include_router(player_admin.router, prefix="/api/v1/player-admin", tags=["Player Admin"])
+app.include_router(player_game.router, prefix="/api/v1/player-game", tags=["Player Game"])
+
+
+
+
 
 # Root endpoint
 @app.get("/")
@@ -217,9 +236,12 @@ async def root():
         "health": "/health"
     }
 
+app.openapi = custom_openapi
+
+
 if __name__ == "__main__":
     uvicorn.run(
-        "app.main:app",
+        socket_app,
         host=settings.host,
         port=settings.port,
         reload=settings.debug,

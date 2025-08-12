@@ -90,3 +90,59 @@ class LeaderboardResponse(BaseModel):
     total_players: int
     page: int
     page_size: int 
+    
+class JoinGameRequest(BaseModel):
+    player_id: str
+    game_level_id: str
+    game_type: str
+    device_fingerprint: Optional[str] = None
+    ip_address: Optional[str] = None
+    level_type: int
+
+class JoinGameResponse(BaseModel):
+    game_attempt_id: str
+    message: str
+
+class ExitGameRequest(BaseModel):
+    player_id: str
+    score: float
+    completion_percentage: Optional[float] = 0.0
+    replay_data: Optional[List[Dict[str, Any]]] = []
+
+class ExitGameResponse(BaseModel):
+    message: str
+    tokens_earned: float
+    gems_earned: Dict[str, int]
+
+class GameActionRequest(BaseModel):
+    player_id: str
+    action_type: str
+    action_data: Optional[Dict[str, Any]] = {}
+    session_id: Optional[str] = None
+    timestamp: Optional[str] = None
+
+class GameActionResponse(BaseModel):
+    game_attempt_id: str
+    action_id: str
+    action_type: str
+    timestamp: Optional[str] = None
+
+class GameStateUpdateRequest(BaseModel):
+    player_id: str
+    timestamp: Optional[str] = None
+
+class GameStateUpdateResponse(BaseModel):
+    game_attempt_id: str
+    timestamp: Optional[str] = None
+
+class ChatMessageRequest(BaseModel):
+    player_id: str
+    username: str
+    message: str
+    timestamp: Optional[str] = None
+
+class PingRequest(BaseModel):
+    timestamp: Optional[str] = None
+
+class PingResponse(BaseModel):
+    timestamp: Optional[str] = None

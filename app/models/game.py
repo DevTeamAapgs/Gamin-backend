@@ -1,17 +1,48 @@
 from datetime import datetime
+from enum import Enum
 from typing import Optional, List, Dict, Any
-from pydantic import Field
+from bson import ObjectId
+from pydantic import BaseModel, Field
 from app.models.base import BaseDocument
-from app.utils.pyobjectid import PyObjectId
+from app.core.enums import GameStatus, GameActionType
 
-class Game(BaseDocument):
-    player_id: PyObjectId
-    game_type: str = Field(default="color_match")  # "color_match", "tube_filling"
+
+
+class GemType(BaseModel):
+  blue:int = Field(default=0)
+  green:int = Field(default=0)
+  red:int = Field(default=0)
+  
+
+
+class GameSession(BaseDocument):
+    """Persistent socket session management for multiplayer games"""
+    player_id: ObjectId
+    socket_id: str
+    game_attempt_id: Optional[ObjectId] = None
+    status: str = Field(default="CONNECTED")  # CONNECTED, DISCONNECTED, IN_GAME
+    ip_address: Optional[str] = None
+    device_fingerprint: Optional[str] = None
+    last_seen: datetime = Field(default_factory=datetime.utcnow)
+    session_data: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GameAttempt(BaseDocument):
+    fk_player_id: ObjectId
+    fk_game_configuration_id: ObjectId
+    fk_game_level_id: ObjectId
+    ip_address: Optional[str] = None
+    device_fingerprint: Optional[str] = None
+    socket_id: Optional[str] = None  # Socket.IO session ID
     level_number: int
-    game_status: str = Field(default="active")  # "active", "completed", "failed", "abandoned"
+    game_status: GameStatus = Field(default=GameStatus.ACTIVE)
     score: int = Field(default=0)
     tokens_earned: float = Field(default=0.0)
+    gems_earned: GemType = Field(default=GemType(blue=0, green=0, red=0))
     entry_cost: float = Field(default=0.0)
+    gems_spent: GemType = Field(default=GemType(blue=0, green=0, red=0))
     start_time: datetime = Field(default_factory=datetime.utcnow)
     end_time: Optional[datetime] = None
     duration: Optional[float] = None  # in seconds
@@ -19,42 +50,38 @@ class Game(BaseDocument):
     max_moves: int = Field(default=100)
     game_data: Dict[str, Any] = Field(default_factory=dict)
     replay_data: List[Dict[str, Any]] = Field(default_factory=list)
-
-class GameLevel(BaseDocument):
-    level_number: int
-    game_type: str = Field(default="color_match")
-    name: str
-    description: str
-    entry_cost: float
-    reward_multiplier: float = Field(default=1.0)
-    time_limit: int  # in seconds
-    difficulty_multiplier: float = Field(default=1.0)
-    max_attempts: int = Field(default=3)
+    completion_percentage: float = Field(default=0.0)
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    level_type: Optional[int] = None
 
 class GameAction(BaseDocument):
-    game_id: PyObjectId
-    player_id: PyObjectId
-    action_type: str  # "move", "click", "drag", "drop", "complete", "fail"
+    fk_game_attempt_id: ObjectId
+    fk_game_configuration_id: ObjectId
+    fk_player_id: ObjectId
+    action_type: GameActionType
     action_data: Dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     session_id: Optional[str] = None
 
-class GameAttempt(BaseDocument):
-    player_id: PyObjectId
-    level_number: int
-    game_type: str
-    attempt_number: int
-    start_time: datetime = Field(default_factory=datetime.utcnow)
-    end_time: Optional[datetime] = None
-    attempt_status: str = Field(default="in_progress")  # "in_progress", "completed", "failed"
-    score: int = Field(default=0)
-    tokens_earned: float = Field(default=0.0)
-    moves_count: int = Field(default=0)
-    completion_percentage: float = Field(default=0.0)
+    
+# class GameAttempt(BaseDocument):
+#     fk_player_id: ObjectId
+#     fk_game_configuration_id: ObjectId
+#     attempt_number: int
+#     start_time: datetime = Field(default_factory=datetime.utcnow)
+#     end_time: Optional[datetime] = None
+#     attempt_status: GameStatus = Field(default=GameStatus.ACTIVE)
+#     score: int = Field(default=0)
+#     tokens_earned: float = Field(default=0.0)
+#     moves_count: int = Field(default=0)
+#     completion_percentage: float = Field(default=0.0)
 
 class GameAnalytics(BaseDocument):
-    player_id: PyObjectId
-    game_type: str
+    fk_player_id: ObjectId
+    fk_game_configuration_id: ObjectId
     level_number: int
     total_attempts: int = Field(default=0)
     successful_attempts: int = Field(default=0)
@@ -66,8 +93,8 @@ class GameAnalytics(BaseDocument):
     last_played: Optional[datetime] = None
 
 class GameReplay(BaseDocument):
-    game_id: PyObjectId
-    player_id: PyObjectId
+    game_id: ObjectId
+    fk_player_id: ObjectId
     replay_data: Dict[str, Any] = Field(default_factory=dict)
     action_sequence: List[Dict[str, Any]] = Field(default_factory=list)
     mouse_movements: List[Dict[str, Any]] = Field(default_factory=list)

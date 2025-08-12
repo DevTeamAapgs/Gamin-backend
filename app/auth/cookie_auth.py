@@ -1,9 +1,21 @@
-from fastapi import Request, HTTPException, Depends
+from fastapi import Request, HTTPException, Depends, WebSocket
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional, Union
 from app.auth.token_manager import token_manager
 from app.core.config import settings
+from app.models.player import Player
+from app.db.mongo import get_database
+from app.core.enums import PlayerType
+from bson import ObjectId
 import logging
+from app.utils.crypto import AESCipher
+from app.utils.crypto_dependencies import get_crypto_service
+from app.models.game import GemType
+import json
+from app.utils.crypto import AESCipher
+from app.utils.crypto_utils import decrypt_player_fields
+
+from app.schemas.player import PlayerInfoSchema
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
@@ -28,6 +40,21 @@ class CookieAuth:
         """Extract token from Authorization header"""
         if credentials:
             return credentials.credentials
+        return None
+    def get_token_from_websocket(self, websocket: WebSocket) -> Optional[str]:
+    # Try from cookies (if cookies are set in the headers)
+        cookie_header = websocket.headers.get("cookie")
+        if cookie_header:
+            cookies = dict(item.split("=", 1) for item in cookie_header.split("; "))
+            token = cookies.get("access_token")  # Adjust the key as needed
+            if token:
+                return token
+
+    # Fallback to Authorization header
+        auth_header = websocket.headers.get("authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            return auth_header.split("Bearer ")[1]
+
         return None
     
     def get_token(self, request: Request, credentials: Optional[HTTPAuthorizationCredentials] = None) -> Optional[str]:
@@ -58,7 +85,7 @@ cookie_auth = CookieAuth()
 async def get_current_user(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> dict:
+) -> PlayerInfoSchema:
     """Get current user from token (cookie or header)"""
     token = cookie_auth.get_token(request, credentials)
     
@@ -77,7 +104,37 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    return payload
+    # Get user ID from payload
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Fetch player from database
+    db = get_database()
+    player_doc = await db.players.find_one({"_id": ObjectId(user_id)})
+    
+    if not player_doc:
+        raise HTTPException(
+            status_code=401,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    player_doc = decrypt_player_fields(player_doc)
+    print("Decrypted player_doc:", player_doc)
+    if not player_doc:
+        raise HTTPException(
+            status_code=401,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # Convert to Player object
+    player_doc["id"] = str(player_doc["_id"])
+    return PlayerInfoSchema(**player_doc)
 
 async def get_current_user_optional(
     request: Request,
@@ -113,9 +170,28 @@ async def verify_admin(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Check if user is admin (this would need to be implemented based on your user model)
-    # For now, we'll assume the payload contains admin information
-    if not payload.get("is_admin"):
+    # Get user ID from payload and fetch full user document
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token payload",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Fetch user from database and check current playertype (not from token)
+    db = get_database()
+    user_doc = await db.players.find_one({"_id": ObjectId(user_id)})
+    
+    if not user_doc:
+        raise HTTPException(
+            status_code=401,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Check if user is admin (playertype=0 for SUPERADMIN, 1 for ADMINEMPLOYEE)
+    if user_doc.get("player_type") not in [PlayerType.SUPERADMIN, PlayerType.ADMINEMPLOYEE]:
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    return payload 
+    return user_doc 

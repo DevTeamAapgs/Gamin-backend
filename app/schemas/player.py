@@ -1,15 +1,88 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field
+from app.core.enums import LevelType, PlayerType
+from app.models.base import BaseDocument, PyObjectId
+from app.models.game import GemType, GameStatus
+class RoleResponse(BaseModel):
+    id: str = Field(..., alias="_id")
+    role: str
+
+class PlayerBase(BaseModel):
+    username: str
+    email: EmailStr
+    status: int
+    fk_role_id: str
 
 class PlayerCreate(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    status: int = 1
+    otp: Optional[str] = None
+
+class PlayerUpdate(BaseModel):
+    username: Optional[str]
+    email: Optional[EmailStr]
+    password: Optional[str]
+    role: Optional[str]
+
+
+class PlayerInfoSchema(BaseDocument):
+    id: PyObjectId = Field(default_factory=ObjectId, alias="_id")
     wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
-    username: str = Field(..., min_length=3, max_length=20)
-    email: Optional[EmailStr] = None
+    username: str = Field(...)
+    email: Optional[str] = None
+    token_balance: Optional[float] = Field(default=0.0)
+    total_games_played: Optional[int] = Field(default=0)
+    total_tokens_earned: Optional[float] = Field(default=0.0)
+    total_tokens_spent: Optional[float] = Field(default=0.0)
+    gems: Optional[GemType] = Field(default=GemType(blue=0, green=0, red=0))
+    is_banned: bool = Field(default=False) 
+    ban_reason: Optional[str] = None
     device_fingerprint: Optional[str] = None
+    ip_address: Optional[str] = None
+    last_login: Optional[datetime] = None
+    player_type: int = Field(default=2)
+    profile_photo: Optional[str] = None
+    player_prefix: Optional[str] = None
+    fk_role_id: Optional[PyObjectId] = Field(default=None)
+    is_active: bool = Field(default=True)
+    created_at: Optional[datetime] = None
+
+
+class PlayerResponse(BaseModel):
+    id: str 
+    wallet_address: Optional[str] = None
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    token_balance: Optional[int] = None
+    total_games_played: Optional[int] = None
+    total_tokens_earned: Optional[int] = None
+    total_tokens_spent: Optional[int] = None
+    gems: Optional[GemType] = None
+    is_active: Optional[bool] = None
+    created_at: Optional[str] = None
+    last_login: Optional[datetime] = None
+    menus: Optional[List] = Field(default_factory=list)
+    player_prefix: Optional[str] = None
+    profile_photo: Optional[Dict[str, str | int | float]] = None
+    player_type: Optional[int] = Field(None, description="Player type: 0=SUPERADMIN, 1=ADMINEMPLOYEE, 2=PLAYER")
+    is_verified: Optional[bool] = None
+
+class PlayerFilters(BaseModel):
+    status: Optional[int] = Field(None, description="Filter by status (1=active, 0=inactive)")
+    role: Optional[str] = Field(None, description="Filter by role name")
+
+class PlayerListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    items: List[PlayerResponse]
 
 class PlayerLogin(BaseModel):
-    wallet_address: Optional[str] = Field(None, min_length=42, max_length=42)
+    email: Optional[str] = Field(None, min_length=42, max_length=42)
     device_fingerprint: str
     ip_address: str
 
@@ -21,38 +94,6 @@ class AdminCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=20)
     password: str = Field(..., min_length=6, max_length=100)
     email: Optional[EmailStr] = None
-
-class PlayerUpdate(BaseModel):
-    username: Optional[str] = Field(None, min_length=3, max_length=20)
-    email: Optional[EmailStr] = None
-
-class PlayerResponse(BaseModel):
-    id: str
-    wallet_address: Optional[str] 
-    username: str
-    email: Optional[str] = None
-    token_balance: float
-    total_games_played: int
-    total_tokens_earned: float
-    total_tokens_spent: float
-    is_active: bool
-    created_at: datetime
-    last_login: Optional[datetime] = None
-
-class AdminResponse(BaseModel):
-    id: str
-    username: str
-    email: Optional[str] = None
-    is_admin: bool
-    is_active: bool
-    created_at: datetime
-    last_login: Optional[datetime] = None
-
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int
 
 class PlayerBalance(BaseModel):
     token_balance: float
@@ -85,4 +126,78 @@ class TransactionResponse(BaseModel):
     status: str
     tx_hash: Optional[str] = None
     created_at: datetime
-    completed_at: Optional[datetime] = None 
+    completed_at: Optional[datetime] = None
+
+class BanRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=500, description="Reason for banning the player") 
+
+
+class PlayerAdminGridListItem(BaseModel):
+    id: str
+    username: str
+    email: Optional[str]
+    wallet_status: bool = False
+    ip_address: Optional[str] = None
+    # token_balance: float = 0.0
+    is_banned: bool = False
+    status: int 
+
+class PlayerAdminGridListResponse(BaseModel):
+    results: list[PlayerAdminGridListItem]
+    total: int 
+
+
+
+class PlayerAdminResponseWithId(BaseModel):
+    id: str 
+    wallet_address: Optional[str] = None
+    player_prefix: Optional[str] = None    # Add player prefix field
+    is_banned: Optional[str] = None
+    created_on: datetime 
+    gems: Optional[GemType] = None
+    profile_photo: Optional[Dict[str, str | int | float]] = None
+    player_type: Optional[int] = Field(None, description="Player type: 0=SUPERADMIN, 1=ADMINEMPLOYEE, 2=PLAYER")
+    is_verified: Optional[bool] = None
+    token_balance: Optional[int]
+    total_games_played: Optional[int]
+    total_tokens_earned: Optional[int]
+    username: Optional[str]
+    email: Optional[EmailStr]
+    last_login: Optional[datetime]
+
+class PlayerAdminGameAttemptResponse(BaseModel):
+    id: str
+    game_name: str
+    level_name: str
+    level_number: int
+    level_type: LevelType
+    game_status: GameStatus
+    # created_on: datetime
+    end_time: Optional[datetime]
+    duration: Optional[float] = 0.0
+    score: int = 0
+    tokens_earned: Optional[float] = 0.0
+    gems_earned: Optional[GemType] = GemType(blue=0, green=0, red=0)
+    entry_cost: Optional[float] = 0.0
+    gems_spent: Optional[GemType] = GemType(blue=0, green=0, red=0)
+    start_time: Optional[datetime]
+    end_time: Optional[datetime]
+    duration: Optional[float] 
+    moves_count: Optional[int] = 0
+    completion_percentage: Optional[float] = 0.0
+
+class PlayerAdminGameAttemptListResponse(BaseModel):
+    results: list[PlayerAdminGameAttemptResponse]
+    total: int 
+
+class SessionWithUsernameResponse(BaseModel):
+    id: str
+    device_fingerprint: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    expires_at: datetime
+    last_activity: datetime
+
+class SessionWithUsernameListResponse(BaseModel):
+    results: list[SessionWithUsernameResponse]
+    total: int 
