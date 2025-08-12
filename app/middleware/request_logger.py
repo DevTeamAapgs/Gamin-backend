@@ -3,16 +3,17 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 import logging
 import time
-from typing import Callable
+from typing import Callable, Optional, List
 import hashlib
 import json
 from app.services.logging_service import logging_service
 from app.auth.token_manager import token_manager
+from app.auth.cookie_auth import cookie_auth
 
 logger = logging.getLogger(__name__)
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, exclude_paths: list = None, enable_db_logging: bool = True):
+    def __init__(self, app, exclude_paths: Optional[List[str]] = None, enable_db_logging: bool = True):
         super().__init__(app)
         self.exclude_paths = exclude_paths or ["/health", "/docs", "/openapi.json"]
         self.enable_db_logging = enable_db_logging
@@ -153,16 +154,26 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        # response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
         
         
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/ https://fastapi.tiangolo.com; "
+            "script-src 'self' 'unsafe-inline' blob: "
+        "https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/ https://fastapi.tiangolo.com "
+        "https://pagead2.googlesyndication.com https://www.googletagservices.com; "
+            "worker-src 'self' blob:; "
+            "child-src 'self' blob:; "
+            "img-src 'self' data: blob: https://tpc.googlesyndication.com; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/; "
             "img-src 'self' data: https://fastapi.tiangolo.com; "
-            "font-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/;"
+            "font-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/; "
+            "connect-src 'self' ws: http: https:"
+            "connect-src 'self' ws: http: https: "
+        "https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com; "
+    # ads render in iframes
+    "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com; "
         )
 
 
@@ -172,10 +183,70 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware to log security events to database."""
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Log suspicious activities
+        # Extract client information
         client_ip = self._get_client_ip(request)
         user_agent = request.headers.get("user-agent", "")
         device_fingerprint = self._generate_device_fingerprint(request)
+        
+        # Add device_fingerprint and client_ip to request object
+        request.state.device_fingerprint = device_fingerprint
+        request.state.client_ip = client_ip
+        request.state.user_agent = user_agent
+        
+        # Extract and decrypt token information
+        player_id = None
+        token_source = None
+        token_payload = None
+        
+        try:
+            # Try to get token from cookies first
+            cookie_token = cookie_auth.get_token_from_cookies(request)
+            if cookie_token:
+                payload = token_manager.verify_token(cookie_token)
+                if payload:
+                    player_id = payload.get("sub")
+                    token_source = "cookie"
+                    token_payload = payload
+                    logger.info(f"Token extracted from cookie for player: {player_id}")
+            
+            # If no cookie token, try authorization header
+            if not player_id:
+                auth_header = request.headers.get("authorization")
+                if auth_header and auth_header.startswith("Bearer "):
+                    header_token = auth_header.split(" ")[1]
+                    payload = token_manager.verify_token(header_token)
+                    if payload:
+                        player_id = payload.get("sub")
+                        token_source = "authorization_header"
+                        token_payload = payload
+                        logger.info(f"Token extracted from authorization header for player: {player_id}")
+        
+        except Exception as e:
+            logger.warning(f"Token extraction failed: {e}")
+        
+        # Add player_id to request state if available
+        if player_id:
+            request.state.player_id = player_id
+            request.state.token_source = token_source
+        
+        # Log token information if available
+        if player_id and token_payload:
+            await logging_service.log_security_event({
+                "event_type": "token_accessed",
+                "client_ip": client_ip,
+                "device_fingerprint": device_fingerprint,
+                "user_agent": user_agent,
+                "player_id": player_id,
+                "token_source": token_source,
+                "details": {
+                    "path": request.url.path,
+                    "method": request.method,
+                    "token_type": token_payload.get("type", "unknown"),
+                    "token_exp": token_payload.get("exp"),
+                    "wallet": token_payload.get("wallet")
+                },
+                "severity": "info"
+            })
         
         # Check for suspicious patterns
         if await self._is_suspicious_request(request, client_ip):
@@ -184,6 +255,7 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
                 "client_ip": client_ip,
                 "device_fingerprint": device_fingerprint,
                 "user_agent": user_agent,
+                "player_id": player_id,
                 "details": {
                     "path": request.url.path,
                     "method": request.method,
@@ -201,9 +273,11 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
                 "client_ip": client_ip,
                 "device_fingerprint": device_fingerprint,
                 "user_agent": user_agent,
+                "player_id": player_id,
                 "details": {
                     "path": request.url.path,
-                    "method": request.method
+                    "method": request.method,
+                    "token_source": token_source
                 },
                 "severity": "warning"
             })
@@ -252,11 +326,12 @@ class SecurityLoggingMiddleware(BaseHTTPMiddleware):
     
     def _generate_device_fingerprint(self, request: Request) -> str:
         """Generate device fingerprint from request headers."""
+        print("request",request)
         fingerprint_data = {
             "user_agent": request.headers.get("user-agent", ""),
             "accept_language": request.headers.get("accept-language", ""),
             "accept_encoding": request.headers.get("accept-encoding", ""),
         }
-        
+        print("data",fingerprint_data)
         fingerprint_string = json.dumps(fingerprint_data, sort_keys=True)
         return hashlib.sha256(fingerprint_string.encode()).hexdigest() 

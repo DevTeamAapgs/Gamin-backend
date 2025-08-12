@@ -1,6 +1,6 @@
 import json
-from fastapi import Request, HTTPException, Depends, Query
-from typing import Any, Type, TypeVar, Callable
+from fastapi import Body, Request, HTTPException, Depends, Query
+from typing import Annotated, Any, Type, TypeVar, Callable
 
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -11,30 +11,9 @@ T = TypeVar("T")
 def get_crypto_service() -> AESCipher:
     return AESCipher()
 
-# def decrypt_body(model: Type[T]) -> Callable:
-#     async def dependency(
-#         request: Request,
-#         crypto: AESCipher = Depends(get_crypto_service)
-#     ) -> T:
-#         try:
-#             body = await request.json()
-#             print(body,"body")
-#             # Skip encryption if requested (e.g. Swagger UI)
-#             if request.headers.get("x-plaintext", "").lower() == "true":
-#                 return model(**body)
 
-#             decrypted = {
-#                 k: crypto.decrypt(v) if isinstance(v, str) else v
-#                 for k, v in body.items()
-#             }
-#             print(decrypted,"decrypted")
-#             return model(**decrypted)
-
-#         except Exception as e:
-#             raise HTTPException(status_code=400, detail=f"Decryption failed: {str(e)}")
-    
-#     return dependency
-
+def EncryptedBody(model: Type[T]):
+    return Annotated[model, Body(..., description="Encrypted payload in runtime. This model is used for documentation.")], Depends(decrypt_body(model))
 
 def decrypt_body(model: Type[T]) -> Callable[..., T]:
     async def dependency(
@@ -54,7 +33,6 @@ def decrypt_body(model: Type[T]) -> Callable[..., T]:
             # If decrypted contains a nested 'data' stringified JSON
             if isinstance(decrypted.get("data"), str):
                 decrypted = json.loads(decrypted["data"])
-
             return model(**decrypted)
 
         except Exception as e:
@@ -71,8 +49,8 @@ def decrypt_query(query: str = Query(...), crypto: AESCipher = Depends(get_crypt
 
 
 def decrypt_data_param(
+    request: Request,
     data: str = Query(...),
-    request: Request = None,
     crypto: AESCipher = Depends(get_crypto_service)
 ) -> dict:
     if request and request.headers.get("x-plaintext", "").lower() == "true":
@@ -80,7 +58,8 @@ def decrypt_data_param(
     try:
         decrypted_json = crypto.decrypt(data)
         return eval(decrypted_json)  
-    except Exception:
+    except Exception as e:
+        print("Error in decrypt_data_param ",e)
         raise HTTPException(status_code=400, detail="Failed to decrypt query payload")
 
 

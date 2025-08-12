@@ -8,10 +8,10 @@ import json
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.models.roles import (
-    MenuItemModel, MenusubmenuAndPermission, PermissionSubmenuModel,  RolesModel, RoleCreate, RoleUpdate, RolePatch, RoleResponse,
-    GridDataRequest, GridDataResponse, GridDataItem, PermissionDetails
+from app.models.roles_models import (
+    MenuItemModel, MenusubmenuAndPermission, PermissionSubmenuModel,  RolesModel, PermissionDetails
 )
+from app.schemas.roles_schemas import (GridDataResponse,RoleResponse,GridDataItem ,RoleCreate, RoleUpdate, RolePatch,)
 from app.models.menu import (
     MenuModel, MenuItem, MenuGroup, MenuQuery, PermissionSchema,
     MenuSchema, MenuPermissionSaveAction, PermissionsSchemaGridList
@@ -19,7 +19,7 @@ from app.models.menu import (
 from app.auth.cookie_auth import verify_admin, get_current_user
 from app.db.mongo import get_database
 from app.core.enums import Status, DeletionStatus
-from app.utils.crypto_dependencies import decrypt_data_param
+from app.utils.crypto_dependencies import decrypt_data_param , decrypt_body
 
 import logging
 
@@ -98,10 +98,11 @@ async def get_grid_data(
 ):
     """Get roles data for grid display with pagination and search"""
     try:
+        print(params,"params")
         
         # Extract parameters from encrypted data
-        page = params.get("page", 1)
-        count = params.get("count", 10)
+        page = int(params.get("page", 1))
+        count = int(params.get("count", 10))
         searchString = params.get("searchString", "")
         
         # Validate parameters
@@ -185,7 +186,7 @@ async def get_form_dependency(
             # Get specific menu permissions
             response_data.append({
                 "id": menu_id,
-                "menu_name": "UI.PARENT_DETAILS",
+                "menu_name": "Parent Details",
                 "permissions": await get_permissions(menu_id, db)
             })
             response_data.extend(await get_submenus(menu_id, db))
@@ -207,18 +208,20 @@ async def get_form_dependency(
 @router.post("", status_code=201)
 async def create_role(
     request: Request,
-    role_data: RoleCreate,
+    role_data: RoleCreate = Depends(decrypt_body(RoleCreate)),
     current_user: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Create a new role"""
     try:
+        print(role_data,"role_data")
         # Check if role already exists (without company filter)
         existing_role = await db.roles.find_one({
             "role_name": role_data.role_name
         })
         
         if existing_role:
+            print("Role already exists")
             raise HTTPException(status_code=400, detail="Role already exists")
         
         # Create role using the model (without company ID)
@@ -241,7 +244,7 @@ async def create_role(
         
         logger.info(f"Role created: {role_data.role_name} by {current_user.get('sub')}")
         
-        response_data = {"message": "Role created successfully", "id": str(result.inserted_id)}
+        response_data = {"message" : "Role created successfully"}
         return response_data
         
     except HTTPException:
@@ -253,7 +256,7 @@ async def create_role(
 @router.put("")
 async def update_role(
     request: Request,
-    role_data: RoleUpdate,
+    role_data: RoleUpdate = Depends(decrypt_body(RoleUpdate)),
     current_user: dict = Depends(verify_admin),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
@@ -281,7 +284,7 @@ async def update_role(
             permissions=[]
         )
         # Set the ID after creation
-        updated_role.id = role_id
+        updated_role._id = role_id
         updated_role.set_permissions_from_dict(role_data.permissions)
         
         # Set audit fields for update
@@ -308,8 +311,8 @@ async def update_role(
 @router.patch("")
 async def patch_role(
     request: Request,
-    role_data: RolePatch,
     current_user: dict = Depends(verify_admin),
+    role_data:  RolePatch = Depends(decrypt_body(RolePatch)), 
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """Patch role status"""
