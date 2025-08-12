@@ -1,0 +1,165 @@
+<div id="editWrapper">
+    <div id="floatForm">
+    	<input id='toggleShowOption' name="toggleOption" type="button" value="Hide Edit Option" />
+        
+        <div id="editOption">
+        	<br/>
+            <div id='selectLevelWrapper'>	
+                Select viewport:<br/>
+				<select id="viewport" name="viewport">
+					<option value="true">landscape</option>
+					<option value="false">portrait</option>
+                </select><br/><br/>
+                			
+                Select levels:<br/>
+                <select id="levelsList" name="levelsList">
+                </select><br/>
+                <input id="prevLevel" name="prevLevel" class="button" type="button" value="Prev Level">
+                <input id="nextLevel" name="nextLevel" class="button" type="button" value="Next Level">
+                <br/><br/>
+            </div>
+            
+            <div id='editLevelWrapper'>
+                <input id='removeLevel' name="removeLevel" type="button" value="Remove Level" />
+                <input id='moveLevelUp' name="moveLevelUp" type="button" value="Move Level Up" />
+                <input id='moveLevelDown' name="moveLevelDown" type="button" value="Move Level Down" />
+                <input id='addLevel' name="addLevel" type="button" value="Add Level" />
+                <br/><br/>
+                Edit puzzle:<br/>
+                <input id="editLevel" name="editLevel" type="button" value="Edit level">
+                <input id="editTubes" name="editTubes" type="button" value="Edit tubes">
+                <br/><br/>
+                Generate and replace array:
+                <input id='generateArray' name="generateArray" type="button" value="Generate Array" />
+                <textarea id="outputArray" name="outputArray" cols="" rows="10"></textarea>
+            </div>
+
+            <div id="levelEditWrapper">
+                Edit level:<br/>
+                <div class="formRow">
+                    <label class="button">Timer:</label>
+                    <input id="levelTimer" name="levelTimer" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Score:</label>
+                    <input id="levelScore" name="levelScore" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Tubes:</label>
+                    <input id="levelTubes" name="levelTubes" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Empty Tubes:</label>
+                    <input id="levelEmptyTubes" name="levelEmptyTubes" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Levels:</label>
+                    <input id="levelLevels" name="levelLevels" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Hidden:</label>
+                    <select id="levelHidden" name="levelHidden">
+                        <option value="false">false</option>
+                        <option value="true">true</option>
+                    </select><br/>
+                </div>
+                <div class="formRow">
+                    <label class="button">Column:</label>
+                    <input id="levelColumn" name="levelColumn" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Margin X:</label>
+                    <input id="levelMarginX" name="levelMarginX" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Margin Y:</label>
+                    <input id="levelMarginY" name="levelMarginY" class="button" type="text" />
+                </div>
+
+                <div class="formRow">
+                    <label class="button">Portrait Column:</label>
+                    <input id="levelPortraitColumn" name="levelPortraitColumn" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Portrait Margin X:</label>
+                    <input id="levelPortraitMarginX" name="levelPortraitMarginX" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Portrait Margin Y:</label>
+                    <input id="levelPortraitMarginY" name="levelPortraitMarginY" class="button" type="text" />
+                </div>
+                <br>
+
+                <input id='updateLevel' name="updateLevel" type="button" value="Update Level" />
+                <input id='doneLevel' name="doneLevel" type="button" value="Done" />
+            </div>
+
+            <div id="editTubesWrapper">				
+                Select tubes:<br/>
+                <select id="tubelist" name="tubelist">
+                </select><br/>
+                <input id="prevTube" name="prevTube" class="button" type="button" value="Prev Tube">
+                <input id="nextTube" name="nextTube" class="button" type="button" value="Next Tube">
+                <br/><br/>
+                <div id='topWrapper'>
+                <input id="removeTube" name="removeTube" type="button" value="Remove Tube">
+                <input id="addTube" name="addTube" type="button" value="Add Tube">
+                <br/><br/>
+                </div>
+        		<div id="actionWrapper">
+                	 Edit Tube:<br/>
+                    <input id='editTube' name="editTube" type="button" value="Edit Tube" />
+                    <br/><br/>
+                    Generate and replace tube array:<br/>
+                    <input id='generateTubeArray' name="generateTubeArray" type="button" value="Generate Array" />
+                    <textarea id="outputTubeArray" name="outputTubeArray" cols="" rows="10"></textarea>
+                </div>
+                <input id='cancelTube' name="cancelTube" type="button" value="Back" />
+             </div>
+        
+            <div id='tubeWrapper' style="display:none;">
+                Edit tube:<br/>
+				<label class="button">Image Back:</label>
+				<input id="imageBack" name="imageBack" type="text" /><br><br>
+                <label class="button">Image Front:</label>
+				<input id="imageFront" name="imageFront" type="text" /><br><br>
+                <label class="button">Image Top Front:</label>
+				<input id="imageTopFront" name="imageTopFront" type="text" /><br><br>
+                <label class="button">Image Top Back:</label>
+				<input id="imageTopBack" name="imageTopBack" type="text" /><br><br>
+                <label class="button">Image Cork:</label>
+				<input id="imageCork" name="imageCork" type="text" /><br><br>
+                <div class="formRow">
+                    <label class="button">Tube Width:</label>
+                    <input id="tubeW" name="tubeW" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Fill Width:</label>
+                    <input id="fillW" name="fillW" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Top Space:</label>
+                    <input id="topSpace" name="topSpace" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Bottom Space:</label>
+                    <input id="bottomSpace" name="bottomSpace" class="button" type="text" />
+                </div>
+                <div class="formRow">
+                    <label class="button">Perspective:</label>
+                    <select id="perspective" name="perspective">
+                        <option value="0">false</option>
+                        <option value="1">true</option>
+                    </select>
+                </div><br>
+                Edit mask:<br/>
+                Doubleclick on stage to draw the masking path.
+                <input id='removePoint' name="removePoint" type="button" value="Remove Point" /><br><br>
+
+                <input id='updateImage' name="updateImage" type="button" value="Update Image" />
+                <input id='doneTube' name="doneTube" type="button" value="Done" />
+            </div>
+
+        </div>
+   </div>
+</div>

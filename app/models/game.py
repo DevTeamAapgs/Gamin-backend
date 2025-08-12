@@ -15,6 +15,20 @@ class GemType(BaseModel):
   
 
 
+class GameSession(BaseDocument):
+    """Persistent socket session management for multiplayer games"""
+    player_id: ObjectId
+    socket_id: str
+    game_attempt_id: Optional[ObjectId] = None
+    status: str = Field(default="CONNECTED")  # CONNECTED, DISCONNECTED, IN_GAME
+    ip_address: Optional[str] = None
+    device_fingerprint: Optional[str] = None
+    last_seen: datetime = Field(default_factory=datetime.utcnow)
+    session_data: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class GameAttempt(BaseDocument):
     fk_player_id: ObjectId
     fk_game_configuration_id: ObjectId

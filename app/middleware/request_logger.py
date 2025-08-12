@@ -154,16 +154,26 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+        # response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
         
         
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/ https://fastapi.tiangolo.com; "
+            "script-src 'self' 'unsafe-inline' blob: "
+        "https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/ https://fastapi.tiangolo.com "
+        "https://pagead2.googlesyndication.com https://www.googletagservices.com; "
+            "worker-src 'self' blob:; "
+            "child-src 'self' blob:; "
+            "img-src 'self' data: blob: https://tpc.googlesyndication.com; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/; "
             "img-src 'self' data: https://fastapi.tiangolo.com; "
-            "font-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/;"
+            "font-src 'self' https://cdn.jsdelivr.net https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/; "
+            "connect-src 'self' ws: http: https:"
+            "connect-src 'self' ws: http: https: "
+        "https://googleads.g.doubleclick.net https://pagead2.googlesyndication.com; "
+    # ads render in iframes
+    "frame-src 'self' https://googleads.g.doubleclick.net https://tpc.googlesyndication.com; "
         )
 
 

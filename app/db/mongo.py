@@ -53,6 +53,37 @@ async def create_indexes():
         await db.database.sessions.create_index("token_hash")
         await db.database.sessions.create_index("expires_at")
         
+        # Game session socket details indexes
+        # Get existing indexes
+        existing_indexes = await db.database.game_sessions_socket_details.index_information()
+
+        # Ensure player_id index
+        await db.database.game_sessions_socket_details.create_index("player_id")
+
+        # Ensure socket_id index with unique constraint
+        await db.database.game_sessions_socket_details.create_index("socket_id", unique=True)
+
+        # Ensure status index
+        await db.database.game_sessions_socket_details.create_index("status")
+
+        # Ensure game_attempt_id index
+        await db.database.game_sessions_socket_details.create_index("game_attempt_id")
+
+        # TTL Index for last_seen: 86400 seconds = 24 hours
+        if "last_seen_1" in existing_indexes:
+            options = existing_indexes["last_seen_1"]
+            if "expireAfterSeconds" not in options or options["expireAfterSeconds"] != 86400:
+                print("⚠️ TTL index exists with incorrect or missing options. Recreating...")
+                await db.database.game_sessions_socket_details.drop_index("last_seen_1")
+                await db.database.game_sessions_socket_details.create_index("last_seen", expireAfterSeconds=86400)
+            else:
+                print("✅ TTL index on 'last_seen' already correctly configured.")
+        else:
+            await db.database.game_sessions_socket_details.create_index("last_seen", expireAfterSeconds=86400)
+            print("✅ TTL index on 'last_seen' created.")
+
+        print("✅ All indexes ensured.")
+        
         # Transaction indexes
         await db.database.transactions.create_index("player_id")
         await db.database.transactions.create_index("transaction_type")

@@ -15,15 +15,10 @@ from http.cookies import SimpleCookie
 import hashlib
 from app.utils.request_utils import get_client_ip, generate_device_fingerprint
 from app.services.game_engine import GameEngine
+from app.services.session_service import session_service
 from app.schemas.game import JoinGameRequest, ExitGameRequest, GameActionRequest, GameStateUpdateRequest, ChatMessageRequest, PingRequest
 from app.auth.cookie_auth import CookieAuth,get_current_user
 logger = logging.getLogger(__name__)
-
-# Store active player sessions
-player_game_sessions = {}  # player_id: ObjectId of game_attempt
-
-# Store socket headers for each connection
-socket_headers = {}  # sid: {device_fingerprint, ip_address}
 
 cookie_auth = CookieAuth()
 
@@ -32,12 +27,26 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
     Setup all Socket.IO event handlers and routes
     """
     
+    async def get_active_session(sid: str):
+        """
+        Helper function to get active session info from persistent storage
+        
+        Args:
+            sid: Socket.IO session ID
+            
+        Returns:
+            Session info dict or None if not found
+        """
+        return await session_service.get_active_session(sid)
+    
     # --- Connection Events ---
 
     @sio.event
     async def connect(sid, environ):
+       
+    
         db = get_database()
-
+        print("environ",environ)
         # --- Extract headers ---
         headers = dict((k.decode(), v.decode()) for k, v in environ.get("headers", []))
         ip_address = headers.get("x-client-ip") or environ.get("HTTP_X_CLIENT_IP")
@@ -65,11 +74,9 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
         request = DummyRequest(environ)
         player = await get_current_user(request)
         print("👤 Player:", player)
+        
         # Example: Get a specific cookie (e.g., session or access token)
-        access_token = cookie_auth.get_token_from_cookies(request)  # or your custom cookie name
-
-        print("🍪 Cookies from client:", request.cookies)
-        print("🔐 Access Token (if any):", access_token)
+        access_token = cookie_auth.get_token(request)
         
         # Always generate fingerprint using the same method as login
         fingerprint = generate_device_fingerprint(request)
@@ -77,6 +84,7 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
         # If IP is missing, get it from the request
         if not ip_address:
             ip_address = get_client_ip(request)
+            
         # Log extracted values
         print("🧩 Socket Connection Headers:")
         print("  ➤ IP Address:", ip_address)
@@ -96,29 +104,40 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
         })
         print("session doc ",session_doc)
         
-
         if not session_doc:
             await sio.disconnect(sid)
             logger.warning(f"❌ Unauthorized connection. SID: {sid}, IP: {ip_address}, FP: {fingerprint}")
             return
 
-        logger.info(f"✅ Connection authorized for player {session_doc['player_id']} with SID: {sid}")
+        player_id = session_doc['player_id']
+        logger.info(f"✅ Connection authorized for player {player_id} with SID: {sid}")
 
-        # Store headers for later use
-        socket_headers[sid] = {
-            "device_fingerprint": fingerprint,
-            "ip_address": ip_address,
-            "player_id": str(session_doc["player_id"]),
-            "session_id": str(session_doc["_id"])
-        }
+        # Create or update persistent session
+        success = await session_service.create_or_update_session(
+            player_id=player_id,
+            sid=sid,
+            ip_address=ip_address,
+            device_fingerprint=fingerprint
+        )
         
+        if not success:
+            logger.error(f"Failed to create/update session for player {player_id}")
+            print("errorsssssssssssssssssssssssssssssss",success)
+            # await sio.disconnect(sid)
+            return
+            
+        logger.info(f"✅ Persistent session created/updated for player {player_id} with SID: {sid}")
+    
     @sio.event
     async def disconnect(sid):
         logger.info(f"Client disconnected: {sid}")
-        # Clean up stored headers
-        if sid in socket_headers:
-            del socket_headers[sid]
-        # Optionally, clean up player_game_sessions here
+        
+        # Mark session as disconnected in persistent storage
+        success = await session_service.disconnect_session(sid)
+        if success:
+            logger.info(f"✅ Session {sid} marked as disconnected in persistent storage")
+        else:
+            logger.warning(f"⚠️ Failed to mark session {sid} as disconnected")
 
     # --- Game Events ---
 
@@ -132,32 +151,24 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
                 logger.error(f"Invalid join game data: {e}")
                 await sio.emit("error", {"message": f"Invalid data format: {str(e)}"}, to=sid)
                 return
-            player_id = data.player_id
+                
+            # Get session info from persistent storage
+            session_info = await session_service.get_active_session(sid)
+            if not session_info:
+                await sio.emit("error", {"message": "No active session found"}, to=sid)
+                return
+                
+            # Use player_id from session instead of trusting client data
+            player_id = str(session_info["player_id"])
+            device_fingerprint = session_info.get("device_fingerprint")
+            ip_address = session_info.get("ip_address")
+            
             game_level_id = ObjectId(data.game_level_id)
             game_type = data.game_type
             level_type = int(data.level_type)
             
-            # Extract device fingerprint and IP from stored headers
-            device_fingerprint = None
-            ip_address = None
-            
-            # Get headers from stored socket headers
-            print("🔍 Looking for headers for sid:", sid)
-            print("📋 Available socket_headers keys:", list(socket_headers.keys()))
-            if sid in socket_headers:
-                stored_headers = socket_headers[sid]
-                device_fingerprint = stored_headers.get("device_fingerprint")
-                ip_address = stored_headers.get("ip_address")
-                print("📍 Fingerprint from stored headers:", device_fingerprint)
-                print("🌐 IP Address from stored headers:", ip_address)
-            else:
-                print("❌ No stored headers found for sid:", sid)
-            
-            # Fallback to data if not in stored headers
-            if not device_fingerprint:
-                device_fingerprint = data.device_fingerprint
-            if not ip_address:
-                ip_address = data.ip_address
+            logger.info(f"Join game request for player {player_id} with session {sid}")
+            logger.info(f"Device fingerprint: {device_fingerprint}, IP: {ip_address}")
 
             # Fetch player and game level
             player_doc = await db.players.find_one({"_id": ObjectId(player_id)})
@@ -222,7 +233,9 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
                 }
                 result = await db.game_attempt.insert_one(game_attempt)
                 game_attempt_id = result.inserted_id
-                player_game_sessions[player_id] = game_attempt_id
+                
+                # Update session with game_attempt_id
+                await session_service.update_game_attempt_id(sid, game_attempt_id)
 
                 await sio.emit("game_joined", {
                     "game_attempt_id": str(game_attempt_id),
@@ -372,7 +385,9 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
                 }
                 result = await db.game_attempt.insert_one(game_attempt)
                 game_attempt_id = result.inserted_id
-                player_game_sessions[player_id] = game_attempt_id
+                
+                # Update session with game_attempt_id
+                await session_service.update_game_attempt_id(sid, game_attempt_id)
 
                 # Update the transaction record with the game_attempt_id
                 try:
@@ -421,15 +436,24 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
                 logger.error(f"Invalid exit game data: {e}")
                 await sio.emit("error", {"message": f"Invalid data format: {str(e)}"}, to=sid)
                 return
-            player_id = data.player_id
+                
+            # Get session info from persistent storage
+            session_info = await session_service.get_active_session(sid)
+            if not session_info:
+                await sio.emit("error", {"message": "No active session found"}, to=sid)
+                return
+                
+            # Use player_id from session instead of trusting client data
+            player_id = str(session_info["player_id"])
+            game_attempt_id = session_info.get("game_attempt_id")
+            
             score = data.score
             print("score",score)
             completion_percentage = data.completion_percentage
             replay_data = data.replay_data
             logger.info(f"Exit game request for player: {player_id}")
             
-            game_attempt_id = player_game_sessions.pop(player_id, None)
-            logger.info(f"Game attempt ID from sessions: {game_attempt_id}")
+            logger.info(f"Game attempt ID from session: {game_attempt_id}")
 
             if not game_attempt_id:
                 await sio.emit("error", {"message": "No active game session to exit."}, to=sid)
@@ -580,6 +604,9 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
             except Exception as e:
                 logger.error(f"Error creating player transaction: {str(e)}")
 
+            # Clear game_attempt_id from session
+            await session_service.clear_game_attempt_id(sid)
+            
             await sio.emit("game_exited", {"message": "You have exited the game."}, to=sid)
             
         except Exception as e:
@@ -597,12 +624,20 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
                 await sio.emit("error", {"message": f"Invalid data format: {str(e)}"}, to=sid)
                 return
                 
-            player_id = data.player_id
+            # Get session info from persistent storage
+            session_info = await session_service.get_active_session(sid)
+            if not session_info:
+                await sio.emit("error", {"message": "No active session found"}, to=sid)
+                return
+                
+            # Use player_id from session instead of trusting client data
+            player_id = str(session_info["player_id"])
+            game_attempt_id = session_info.get("game_attempt_id")
+            
             action_type = data.action_type  # MOVE, CLICK, DRAG, DROP, COMPLETE, FAIL
             action_data = data.action_data
             session_id = data.session_id
             
-            game_attempt_id = player_game_sessions.get(player_id)
             if not game_attempt_id:
                 await sio.emit("error", {"message": "No active game session"}, to=sid)
                 return
@@ -654,8 +689,14 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
     async def game_state_update(sid, data):
         db = get_database()
         data = GameStateUpdateRequest(**data)
-        player_id = data.player_id
-        game_attempt_id = player_game_sessions.get(player_id)
+        
+        # Get session info from persistent storage
+        session_info = await session_service.get_active_session(sid)
+        if not session_info:
+            await sio.emit("error", {"message": "No active session found"}, to=sid)
+            return
+            
+        game_attempt_id = session_info.get("game_attempt_id")
         if not game_attempt_id:
             await sio.emit("error", {"message": "No active game session"}, to=sid)
             return
@@ -667,10 +708,16 @@ def setup_socketio_routes(sio: socketio.AsyncServer, app: FastAPI):
 
     @sio.event
     async def chat_message(sid, data):
+        # Get session info from persistent storage
+        session_info = await session_service.get_active_session(sid)
+        if not session_info:
+            await sio.emit("error", {"message": "No active session found"}, to=sid)
+            return
+            
         # Broadcast chat message to all clients
         data = ChatMessageRequest(**data)
         await sio.emit("chat_message", {
-            "player_id": data.player_id,
+            "player_id": str(session_info["player_id"]),  # Use player_id from session
             "username": data.username,
             "message": data.message,
             "timestamp": data.timestamp or datetime.utcnow().isoformat()

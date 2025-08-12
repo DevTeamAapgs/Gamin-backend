@@ -33,7 +33,7 @@ def main():
     try:
         # Start the server
         uvicorn.run(
-            "app.main:app",
+            "app.main:socket_app",
             host=host,
             port=port,
             reload=debug,
